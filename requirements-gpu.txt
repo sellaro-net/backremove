@@ -14,7 +14,7 @@ nvidia-cufft-cu11==10.9.0.58
 
 # BiRefNet quality backend. PyTorch/torchvision CUDA wheels are installed
 # separately by setup-gpu.ps1 from the official cu118 index.
-transformers==4.57.6
+transformers==5.10.1
 timm==1.0.29
 kornia==0.8.3
 einops==0.8.2
