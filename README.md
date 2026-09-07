@@ -3,6 +3,14 @@
 Background removal API with a fast withoutBG v10 backend and an opt-in
 BiRefNet quality backend.
 
+Repository: [sellaro-net/backremove](https://github.com/sellaro-net/backremove).
+
+Nach dem Repository-Transfer verwenden zukünftige reguläre Publisher
+`ghcr.io/sellaro-net/backremove`. Das bestehende öffentliche Paket
+`ghcr.io/tentoxa/backremove` bleibt davon getrennt; der Transfer verschiebt
+keine Images. Bestehende Deployment-Pins bleiben bis zum gesonderten manuellen
+Imagewechsel unverändert. Paket-Zugriffe können sich durch den Transfer ändern.
+
 ## Native setup (Windows + NVIDIA GPU)
 
 Requires Python 3.12 and a current NVIDIA driver. Double-click
