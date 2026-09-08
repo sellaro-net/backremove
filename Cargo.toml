@@ -29,7 +29,7 @@ hex = "0.4"
 libloading = "0.9"
 half = "2"
 flume = "0.12"
-image = { version = "=0.25.9", default-features = false, features = ["jpeg", "png", "webp", "gif", "avif-native"] }
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "avif-native"] }
 fast_image_resize = { version = "=6.1.0", default-features = false, features = ["std"] }
 resvg = { version = "=0.48.1", default-features = false, features = ["text", "raster-images"] }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-26", "cuda", "half"] }
