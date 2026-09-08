@@ -6,5 +6,5 @@
 numpy==2.5.2
 onnx==1.22.0
 onnxruntime==1.26.0
-onnxruntime-gpu==1.26.0
+onnxruntime-gpu==1.29.0
 
