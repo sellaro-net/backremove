@@ -8,7 +8,7 @@ publish = false
 default-run = "backremove"
 
 [dependencies]
-axum = { version = "=0.8.8", default-features = false, features = ["http1", "http2", "json", "tokio", "query"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "http2", "json", "tokio", "query"] }
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal", "io-util"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "=0.7.1", features = ["cors", "trace", "limit"] }
