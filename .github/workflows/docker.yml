@@ -12,83 +12,241 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: backremove-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  native-cpu:
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
-      packages: write
+    env:
+      EVIDENCE_DIR: native-cpu-evidence
+    outputs:
+      image-digest: ${{ steps.archive.outputs.image-digest }}
+      archive-sha256: ${{ steps.archive.outputs.archive-sha256 }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build the local native image
-        uses: docker/build-push-action@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_dir="${RUNNER_TEMP}/actionlint"
+          mkdir -p "$tool_dir" "$EVIDENCE_DIR"
+          curl -fsSL --retry 3 --retry-all-errors \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o "$tool_dir/actionlint.tar.gz"
+          printf '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  %s\n' \
+            "$tool_dir/actionlint.tar.gz" | sha256sum --check --status
+          tar -xzf "$tool_dir/actionlint.tar.gz" -C "$tool_dir" actionlint
+          "$tool_dir/actionlint" -color
+
+      - name: Audit the native locked dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Cargo uses the repository's rust-toolchain.toml (Rust 1.95.0).
+          cargo install cargo-audit --version 0.22.2 --locked --no-default-features
+          cargo audit --file Cargo.lock 2>&1 | tee "$EVIDENCE_DIR/cargo-audit.txt"
+
+      - name: Install OCI image transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build and test the native image with OCI attestations
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile
           platforms: linux/amd64
-          load: true
           push: false
-          tags: backremove-native:ci
+          tags: backremove-native:local-cpu
+          outputs: type=oci,dest=${{ runner.temp }}/native-cpu.oci.tar
+          provenance: mode=max
+          sbom: true
           build-args: SOURCE_REVISION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Exercise the real native CPU service
+          # The Dockerfile gates its runtime image on locked native tests and clippy.
+          cache-from: type=gha,scope=backremove-native-cpu
+          cache-to: type=gha,mode=max,scope=backremove-native-cpu
+
+      - name: Record the attested archive and load its CPU image for testing
+        id: archive
         shell: bash
         run: |
           set -euo pipefail
-          trap 'docker logs backremove-native-smoke || true; docker rm -f backremove-native-smoke >/dev/null 2>&1 || true' EXIT
-          docker run --detach --name backremove-native-smoke --read-only \
-            --cap-drop ALL --security-opt no-new-privileges \
-            --memory 3g --pids-limit 128 --tmpfs /tmp:size=16m,noexec,nosuid,nodev \
-            --publish 127.0.0.1:18585:8000 -e API_KEY=ci-only-native-smoke backremove-native:ci
-          ready=0
-          for attempt in {1..90}; do
-            if curl --fail --silent --max-time 2 http://127.0.0.1:18585/health >health.json; then
-              ready=1
-              break
-            fi
-            sleep 2
-          done
-          test "$ready" = 1
-          printf '%s' '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="white"/><circle cx="32" cy="20" r="12" fill="red"/></svg>' >input.svg
-          curl --fail --silent --show-error --max-time 10 \
-            -H 'X-API-Key: ci-only-native-smoke' -F 'file=@input.svg;type=image/svg+xml' \
-            'http://127.0.0.1:18585/remove-bg?model=fast' -o output.png
-          python3 -c 'import struct; b=open("output.png","rb").read(); assert b[:8]==b"\x89PNG\r\n\x1a\n"; assert struct.unpack(">II", b[16:24])==(64,40); assert b[25]==6'
-          status=$(curl --silent --max-time 5 -o unavailable.json -w '%{http_code}' \
-            -H 'X-API-Key: ci-only-native-smoke' -F 'file=@input.svg;type=image/svg+xml' \
-            'http://127.0.0.1:18585/remove-bg?model=quality')
+          archive="oci-archive:${RUNNER_TEMP}/native-cpu.oci.tar"
+          skopeo inspect --raw "$archive" > "$EVIDENCE_DIR/oci-index.json"
+          jq -e '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")] | length == 1' \
+            "$EVIDENCE_DIR/oci-index.json"
+          attestation=$(jq -er '.manifests[] | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest") | .digest' \
+            "$EVIDENCE_DIR/oci-index.json")
+          [[ "$attestation" =~ ^sha256:[a-f0-9]{64}$ ]]
+          tar -xOf "$RUNNER_TEMP/native-cpu.oci.tar" "blobs/sha256/${attestation#sha256:}" \
+            > "$EVIDENCE_DIR/attestation-manifest.json"
+          jq -e '[.layers[].annotations["in-toto.io/predicate-type"]] |
+            (index("https://slsa.dev/provenance/v0.2") != null or index("https://slsa.dev/provenance/v1") != null) and index("https://spdx.dev/Document") != null' \
+            "$EVIDENCE_DIR/attestation-manifest.json"
+          image_digest=$(skopeo inspect --format '{{.Digest}}' "$archive")
+          [[ "$image_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          archive_sha256=$(sha256sum "$RUNNER_TEMP/native-cpu.oci.tar" | cut -d ' ' -f 1)
+          printf 'image-digest=%s\narchive-sha256=%s\n' "$image_digest" "$archive_sha256" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$image_digest" > "$EVIDENCE_DIR/image-digest.txt"
+          printf '%s  native-cpu.oci.tar\n' "$archive_sha256" > "$EVIDENCE_DIR/archive.sha256"
+          # Select only the runnable platform for Docker; keep the original OCI archive intact.
+          skopeo --override-os linux --override-arch amd64 copy \
+            "$archive" docker-daemon:backremove-native:local-cpu
+
+      - name: Exercise the actual hardened Compose service and native HTTP contract
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          export API_KEY="ci-only-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker compose -p backremove-ci logs --no-color > "$EVIDENCE_DIR/compose.log" 2>&1 || true
+            cat "$EVIDENCE_DIR/compose.log"
+            docker compose -p backremove-ci down --volumes --remove-orphans || true
+          }
+          trap cleanup EXIT
+          docker compose -p backremove-ci config --quiet
+          docker compose -p backremove-ci up -d --wait --wait-timeout 300 --no-build --pull never
+          container=$(docker compose -p backremove-ci ps -q backremove)
+          test -n "$container"
+          test "$(docker inspect --format '{{.Image}}' "$container")" = \
+            "$(docker image inspect --format '{{.Id}}' backremove-native:local-cpu)"
+          test "$(docker compose -p backremove-ci exec -T backremove id -u)" -ne 0
+          docker inspect --format '{{json .HostConfig}}' "$container" > "$EVIDENCE_DIR/container-security.json"
+          jq -e '.ReadonlyRootfs == true and (.CapDrop | index("ALL") != null) and
+            (.SecurityOpt | index("no-new-privileges:true") != null) and
+            (.PortBindings["8000/tcp"] | length == 1 and .[0].HostIp == "127.0.0.1" and .[0].HostPort == "8000")' \
+            "$EVIDENCE_DIR/container-security.json"
+          curl --fail --silent --show-error --max-time 5 \
+            http://127.0.0.1:8000/health -o "$EVIDENCE_DIR/health.json"
+          jq -e '.status == "ok" and .ready == true and .models.fast.loaded == true and .models.quality.loaded == false' \
+            "$EVIDENCE_DIR/health.json"
+          docker compose -p backremove-ci exec -T backremove sh -c \
+            '! command -v python && ! command -v python3 && test ! -d /opt/backremove/app'
+          docker cp "$container:/opt/backremove/release-inventory.json" "$EVIDENCE_DIR/release-inventory.json"
+          docker cp "$container:/opt/backremove/artifacts/linux-cpu/manifest.json" "$EVIDENCE_DIR/artifact-manifest.json"
+          printf '%s' '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="white"/><circle cx="32" cy="20" r="12" fill="red"/></svg>' \
+            > "$EVIDENCE_DIR/input.svg"
+          status=$(curl --silent --show-error --max-time 5 -o "$EVIDENCE_DIR/unauthorized.json" -w '%{http_code}' \
+            -F "file=@${EVIDENCE_DIR}/input.svg;type=image/svg+xml" http://127.0.0.1:8000/remove-bg)
+          test "$status" = 401
+          status=$(curl --silent --show-error --max-time 5 -o "$EVIDENCE_DIR/unsupported.json" -w '%{http_code}' \
+            -H "X-API-Key: ${API_KEY}" -F 'file=@Cargo.toml;type=text/plain' http://127.0.0.1:8000/remove-bg)
+          test "$status" = 415
+          curl --fail --silent --show-error --max-time 15 \
+            -H "X-API-Key: ${API_KEY}" -F "file=@${EVIDENCE_DIR}/input.svg;type=image/svg+xml" \
+            'http://127.0.0.1:8000/remove-bg?model=fast' -o "$EVIDENCE_DIR/output.png"
+          # Inspect response bytes on the runner, not with a Python runtime in the image.
+          python3 -c 'import pathlib, struct, sys; b=pathlib.Path(sys.argv[1]).read_bytes(); assert b[:8]==b"\x89PNG\r\n\x1a\n"; assert struct.unpack(">II", b[16:24])==(64,40); assert b[25]==6' \
+            "$EVIDENCE_DIR/output.png"
+          status=$(curl --silent --show-error --max-time 5 -o "$EVIDENCE_DIR/unavailable.json" -w '%{http_code}' \
+            -H "X-API-Key: ${API_KEY}" -F "file=@${EVIDENCE_DIR}/input.svg;type=image/svg+xml" \
+            'http://127.0.0.1:8000/remove-bg?model=quality')
           test "$status" = 503
-          python3 -c 'import json; assert json.load(open("unavailable.json"))["code"]=="model_unavailable"'
-          docker exec backremove-native-smoke sh -c '! command -v python && ! command -v python3 && test ! -d /opt/backremove/app'
-          docker cp backremove-native-smoke:/opt/backremove/release-inventory.json ./release-inventory.json
-          docker cp backremove-native-smoke:/opt/backremove/artifacts/linux-cpu/manifest.json ./artifact-manifest.json
-      - name: Retain native build evidence
-        uses: actions/upload-artifact@v4
+          jq -e '.code == "model_unavailable"' "$EVIDENCE_DIR/unavailable.json"
+
+      - name: Verify the tested OCI archive was not modified
+        env:
+          ARCHIVE_SHA256: ${{ steps.archive.outputs.archive-sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "$RUNNER_TEMP/native-cpu.oci.tar" | sha256sum --check --status
+
+      - name: Retain native build and service evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-cpu-build-evidence
-          path: |
-            release-inventory.json
-            artifact-manifest.json
-            health.json
-            output.png
-      - name: Authenticate package publication
+          path: ${{ env.EVIDENCE_DIR }}/
+          retention-days: 14
+
+      - name: Retain the exact tested OCI archive for release publication
         if: github.event_name == 'release'
-        uses: docker/login-action@v3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish the tested image on an actual repository release
-        if: github.event_name == 'release'
+          name: native-cpu-tested-oci
+          path: ${{ runner.temp }}/native-cpu.oci.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    needs: build
+    if: github.event_name == 'release' && github.repository == 'sellaro-net/backremove'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve the versioned native image reference
+        id: image
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
-          case "$RELEASE_TAG" in ''|*[!a-zA-Z0-9_.-]*) echo 'Release tag is not a valid image tag'; exit 1;; esac
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:${RELEASE_TAG}-native-cpu"
-          docker tag backremove-native:ci "$image"
-          docker push "$image"
+          # The complete Docker tag, including -native-cpu, must fit in 128 characters.
+          if [[ ! "$RELEASE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,116}$ ]]; then
+            echo 'Release tag is not a valid versioned image tag' >&2
+            exit 1
+          fi
+          printf 'reference=ghcr.io/sellaro-net/backremove:%s-native-cpu\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download the tested OCI archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-cpu-tested-oci
+          path: ${{ runner.temp }}
+
+      - name: Verify the release input and install OCI image transport
+        env:
+          ARCHIVE_SHA256: ${{ needs.build.outputs.archive-sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "$RUNNER_TEMP/native-cpu.oci.tar" | sha256sum --check --status
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
+
+      - name: Authenticate package publication
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the tested OCI image and attestations without rebuilding
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+          EXPECTED_DIGEST: ${{ needs.build.outputs.image-digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          authfile="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+          skopeo copy --all --preserve-digests --authfile "$authfile" \
+            --digestfile "$RUNNER_TEMP/published-digest.txt" \
+            "oci-archive:${RUNNER_TEMP}/native-cpu.oci.tar" "docker://${IMAGE}"
+          digest=$(cat "$RUNNER_TEMP/published-digest.txt")
+          test "$digest" = "$EXPECTED_DIGEST"
+          published_digest=$(skopeo inspect --authfile "$authfile" --format '{{.Digest}}' "docker://${IMAGE}")
+          test "$published_digest" = "$EXPECTED_DIGEST"
+          printf '## Published native CPU image\n\nTag: `%s`\n\nImmutable reference: `%s@%s`\n\nThe tested OCI archive, including provenance and SBOM, was copied without rebuilding. No mutable latest tag or deployment.\n' \
+            "$IMAGE" "${IMAGE%:*}" "$digest" >> "$GITHUB_STEP_SUMMARY"

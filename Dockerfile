@@ -62,8 +62,12 @@ WORKDIR /opt/backremove
 ENV HOST=0.0.0.0 PORT=8000 INFERENCE_DEVICE=cpu QUALITY_MODEL_ENABLED=0 \
     ARTIFACT_MANIFEST=/opt/backremove/artifacts/linux-cpu/manifest.json \
     FAST_TIMEOUT=9 QUALITY_TIMEOUT=29 SHUTDOWN_GRACE=30
+ARG SOURCE_REVISION=local
 LABEL org.opencontainers.image.title="BackRemove native CPU" \
-      org.opencontainers.image.description="Native Rust background removal. Built with DINOv3."
+      org.opencontainers.image.description="Native Rust background removal. Built with DINOv3." \
+      org.opencontainers.image.source="https://github.com/sellaro-net/backremove" \
+      org.opencontainers.image.version="2.0.0" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
 USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \

@@ -1,22 +1,10 @@
--r requirements.txt
+-r requirements-quality.txt
 
-# ONNX Runtime 1.18.0 is the Pascal-compatible CUDA 11 / cuDNN 8 build.
-# Newer cuDNN 9 builds require Turing (compute capability 7.5) or newer.
-numpy==1.26.4
+# CUDA 12.6 PyTorch wheels retain Pascal (sm_61) support.
+# ONNX Runtime shares their CUDA 12 / cuDNN 9 libraries via preload_dlls().
+# 1.27+ GPU wheels require CUDA 13, which no longer supports Pascal.
+numpy==2.5.2
 onnx==1.22.0
-onnxruntime==1.18.0
-onnxruntime-gpu==1.18.0
-nvidia-cublas-cu11==11.11.3.6
-nvidia-cuda-nvrtc-cu11==11.8.89
-nvidia-cuda-runtime-cu11==11.8.89
-nvidia-cudnn-cu11==8.9.5.29
-nvidia-cufft-cu11==10.9.0.58
+onnxruntime==1.26.0
+onnxruntime-gpu==1.26.0
 
-# BiRefNet quality backend. PyTorch/torchvision CUDA wheels are installed
-# separately by setup-gpu.ps1 from the official cu118 index.
-transformers==4.57.6
-timm==1.0.29
-kornia==0.8.3
-einops==0.8.2
-safetensors==0.8.0
-huggingface-hub==0.36.2

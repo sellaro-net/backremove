@@ -8,6 +8,17 @@ HTTP, admission, scheduling, decoding, preprocessing, inference orchestration an
 PNG output are native. The shipped server contains **no Python, PyTorch,
 Transformers, withoutbg SDK or CUDA development toolkit**.
 
+The canonical repository is [sellaro-net/backremove](https://github.com/sellaro-net/backremove).
+Part of [Sellaro](https://github.com/sellaro-net/sellaro), BackRemove is maintained
+independently from the web/mobile application and
+[ja3proxy](https://github.com/sellaro-net/ja3proxy).
+
+The native Rust release line starts at **v2.0.0**. The latest Python implementation,
+through commit `61d07f6243b338b76d393ee569a7249a23fab6a8`, is retained on
+[`legacy-python`](https://github.com/sellaro-net/backremove/tree/legacy-python).
+Use that branch for the former Python application and its setup/dependency
+instructions; it is not a runtime fallback for the native release.
+
 ## Run a native Windows release
 
 Runtime prerequisites: Windows x64, the Microsoft Visual C++ 2015–2022 x64
@@ -49,7 +60,8 @@ Build prerequisites, not runtime dependencies:
 
 - Rust **1.95.0**, Cargo and Git.
 - Visual Studio 2022 C++ x64 build tools and the Windows SDK.
-- Python **3.12 x64** for isolated offline model/build tooling (reference: 3.12.9).
+- Python **3.12 x64** for isolated model preparation and build inventory tooling
+  (reference: 3.12.9); the default setup downloads its pinned inputs.
 - Sufficient disk space for source wheels, both models, FP32 intermediate graphs,
   native dependencies and private output copies. These inputs occupy several GB.
 
@@ -196,21 +208,54 @@ docker compose up --build
 
 Compose has the concrete local build context `.` and image tag
 `backremove-native:local-cpu`, binds `127.0.0.1:8000`, and does not mount a mutable
-model cache. The multi-stage Dockerfile prepares the CPU artifact pack and builds
-dav1d 1.5.3 and Rust from pinned source inputs. Its final image contains native
-libraries, the executable, Fast, explicit fonts and license/provenance records;
-**no Python**. It runs as UID/GID 10001 with read-only release files. Compose adds
-a read-only filesystem, dropped capabilities, no-new-privileges, memory/PID
-limits and a bounded temporary filesystem. Health checks use the native
-`--healthcheck` command. Linux system dependencies are glibc, libstdc++ and the
-packaged dav1d library; the runtime image also supplies libgomp.
+model cache. The multi-stage Dockerfile prepares pinned CPU model/runtime
+artifacts, builds dav1d 1.5.3 from a hash-checked source archive, and compiles the
+application with locked Cargo dependencies and the pinned Rust toolchain.
+Python is used only in build stages for artifact preparation and native build
+tooling. The final image contains native libraries, the executable, Fast,
+explicit fonts and license/provenance records; **no Python**. It runs as UID/GID
+10001 with root-owned, read-only release files. Compose adds a read-only
+filesystem, dropped capabilities, no-new-privileges, memory/PID limits and a
+bounded temporary filesystem. Health checks use the native `--healthcheck`
+command. Linux system dependencies are glibc, libstdc++ and the packaged dav1d
+library; the runtime image also supplies libgomp.
 
-CI builds and exercises the real Linux CPU image, including a complete SVG →
-Fast → RGBA-PNG request and unavailable Quality. It stores build evidence.
-Only an actual published GitHub release publishes that tested image to the
-**current repository's** GHCR package as `<release-tag>-native-cpu`. Branch/PR
-builds do not publish an image or change a running service. This workflow does
-not deploy anything.
+Compose requires a nonempty `API_KEY` and keeps the logical service name
+`backremove`, without a fixed container name. Its loopback endpoint is deliberate:
+remote access belongs behind an authenticated TLS reverse proxy or an explicitly
+configured private network. Forwarded client IPs are accepted only from
+`TRUSTED_PROXIES`; do not broaden that allowlist to untrusted clients.
+
+The base image manifests and model/native source inputs are pinned, but Debian
+package repositories are not snapshot-locked. A fresh build is therefore **not
+guaranteed byte-for-byte reproducible**. Recorded hashes and package inventories
+identify the produced release; they do not replace target-runtime verification.
+
+### Native release publication
+
+CI builds and exercises the real Linux CPU image through the Compose service,
+including a complete SVG → Fast → RGBA-PNG request and unavailable Quality.
+It stores build evidence. On a published GitHub release, the release workflow
+publishes the **exact tested OCI image**, retaining its SBOM and build provenance,
+to `ghcr.io/sellaro-net/backremove:<release-tag>-native-cpu`; it does not rebuild
+the image for publication. For release `v2.0.0`, that reference is:
+
+```text
+ghcr.io/sellaro-net/backremove:v2.0.0-native-cpu
+```
+
+This describes the workflow's release contract, not confirmation that the image
+is already available. Windows CUDA builds are packaged separately as native
+release assets with their private runtime libraries; the Linux image is CPU-only.
+Branch/PR builds do not publish images. The native workflow does **not** create
+or update `latest`, deploy a service, or delete old package versions.
+
+For an operator-managed deployment, use the published `@sha256:…` digest and keep
+the previous digest for rollback. Existing image/deployment pins remain unchanged
+until an operator explicitly switches them. The former
+`ghcr.io/tentoxa/backremove` package is separate: moving the repository to the
+Sellaro organization does not move its images or repoint either package's
+existing `latest` tag.
 
 ## HTTP contract
 
