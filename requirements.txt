@@ -1,6 +1,6 @@
 fastapi==0.139.2
 uvicorn[standard]==0.51.0
-withoutbg==1.0.6
+withoutbg==1.1.1
 python-multipart==0.0.32
 pillow==12.3.0
 pillow-avif-plugin==1.5.5

@@ -1299,7 +1299,7 @@ websockets==17.1 \
     --hash=sha256:fd8f47dbf2e8adb15c847215f83436de3fdb120b51fdae0fbbdf69fd97a3ad80 \
     --hash=sha256:ff3e2ba7a9f0a110b0555452e9b5a03a34e11662544e01beea15f144b48ba7b7
     # via uvicorn
-withoutbg==1.0.6 \
-    --hash=sha256:5b80d79a6a33bffe0c10f922ba0cd6a4d85ee8efa18b69ee1149256c116d6833 \
-    --hash=sha256:5d2504d706ba6730344bbcc9f7fe578c803b7c5eac31688c525d35fe51145514
+withoutbg==1.1.1 \
+    --hash=sha256:15282f880e3853a5100c93a5695de17bd04c91802afd52482863b23934a43b03 \
+    --hash=sha256:e10bb8e9d1e87dbba28953b4bb0a05b47ca27001c145f20f650f9688d9ac8568
     # via -r requirements.txt
