@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # All three official image manifests are pinned; target is deliberately linux/amd64.
-FROM python:3.12.9-slim-bookworm@sha256:48a11b7ba705fd53bf15248d1f94d36c39549903c5d59edcfa2f3f84126e7b44 AS artifacts
+FROM python:3.14.7-slim-bookworm@sha256:9ab8d9c8514b44f90cf0029dd42fdd7e9e211e639c8b995304cc04568dee900f AS artifacts
 WORKDIR /src
 COPY tools/requirements-prepare.txt ./tools/
 RUN python -m pip install --disable-pip-version-check --timeout 30 --retries 2 \
