@@ -1,0 +1,5 @@
+# Lockfile generation and security checks; not installed in the runtime image.
+pip==26.2.1
+setuptools==84.0.0
+uv==0.12.10
+pip-audit==2.10.1

@@ -1,8 +1,16 @@
 services:
   backremove:
     build: .
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     deploy:
       resources:
@@ -11,7 +19,6 @@ services:
     volumes:
       - model-cache:/home/appuser/.cache
     environment:
-      PYTHONUNBUFFERED: "1"
       API_KEY: ${API_KEY:?Set API_KEY in .env}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
