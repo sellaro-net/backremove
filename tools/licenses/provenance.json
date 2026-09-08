@@ -1,0 +1,14 @@
+{
+  "CUDA": {
+    "path": "licenses/CUDA-LICENSE.txt",
+    "sha256": "e2c71babfd18a8e69542dd7e9ca018f9caa438094001a58e6bc4d8c999bf0d07",
+    "source": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/LICENSE",
+    "version": "12.8.1"
+  },
+  "cuDNN": {
+    "path": "licenses/cuDNN-LICENSE.txt",
+    "sha256": "7936e1f9f2a6d9deea237aee6aa7f1abd032d34bcc1c35de1e6516b223d09487",
+    "source": "C:/Program Files/NVIDIA/CUDNN/v9.8/LICENSE",
+    "version": "9.8.0.87"
+  }
+}

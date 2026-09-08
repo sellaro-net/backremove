@@ -1,0 +1,23 @@
+[package]
+name = "dav1d-sys"
+version = "0.8.3"
+authors = ["Luca Barbato <lu_zero@gentoo.org>"]
+license = "MIT"
+description = "dav1d FFI with native-header ABI verification"
+repository = "https://github.com/rust-av/dav1d-rs"
+edition = "2021"
+rust-version = "1.95"
+publish = false
+build = "build.rs"
+
+[build-dependencies]
+system-deps = "7"
+cc = "1"
+libc = "0.2"
+
+[dependencies]
+libc = "0.2"
+
+[package.metadata.system-deps.dav1d]
+name = "dav1d"
+version = ">= 1.5.3, < 1.6"

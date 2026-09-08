@@ -1,57 +1,94 @@
-name: Build and Push Docker Image
+name: Native Linux CPU image
 
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  release:
+    types: [published]
+  workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  native-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: Verify application
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip check
-          python -m unittest discover -s tests -v
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Lowercase the repo name
-        run: echo "REPO_LOWERCASE=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
-
-      - name: Build and push Docker image
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the local native image
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ env.REGISTRY }}/${{ env.REPO_LOWERCASE }}:latest
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: backremove-native:ci
+          build-args: SOURCE_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Exercise the real native CPU service
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'docker logs backremove-native-smoke || true; docker rm -f backremove-native-smoke >/dev/null 2>&1 || true' EXIT
+          docker run --detach --name backremove-native-smoke --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --memory 3g --pids-limit 128 --tmpfs /tmp:size=16m,noexec,nosuid,nodev \
+            --publish 127.0.0.1:18585:8000 -e API_KEY=ci-only-native-smoke backremove-native:ci
+          ready=0
+          for attempt in {1..90}; do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:18585/health >health.json; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          printf '%s' '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="white"/><circle cx="32" cy="20" r="12" fill="red"/></svg>' >input.svg
+          curl --fail --silent --show-error --max-time 10 \
+            -H 'X-API-Key: ci-only-native-smoke' -F 'file=@input.svg;type=image/svg+xml' \
+            'http://127.0.0.1:18585/remove-bg?model=fast' -o output.png
+          python3 -c 'import struct; b=open("output.png","rb").read(); assert b[:8]==b"\x89PNG\r\n\x1a\n"; assert struct.unpack(">II", b[16:24])==(64,40); assert b[25]==6'
+          status=$(curl --silent --max-time 5 -o unavailable.json -w '%{http_code}' \
+            -H 'X-API-Key: ci-only-native-smoke' -F 'file=@input.svg;type=image/svg+xml' \
+            'http://127.0.0.1:18585/remove-bg?model=quality')
+          test "$status" = 503
+          python3 -c 'import json; assert json.load(open("unavailable.json"))["code"]=="model_unavailable"'
+          docker exec backremove-native-smoke sh -c '! command -v python && ! command -v python3 && test ! -d /opt/backremove/app'
+          docker cp backremove-native-smoke:/opt/backremove/release-inventory.json ./release-inventory.json
+          docker cp backremove-native-smoke:/opt/backremove/artifacts/linux-cpu/manifest.json ./artifact-manifest.json
+      - name: Retain native build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-cpu-build-evidence
+          path: |
+            release-inventory.json
+            artifact-manifest.json
+            health.json
+            output.png
+      - name: Authenticate package publication
+        if: github.event_name == 'release'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested image on an actual repository release
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in ''|*[!a-zA-Z0-9_.-]*) echo 'Release tag is not a valid image tag'; exit 1;; esac
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${RELEASE_TAG}-native-cpu"
+          docker tag backremove-native:ci "$image"
+          docker push "$image"
