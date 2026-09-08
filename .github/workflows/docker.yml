@@ -248,5 +248,5 @@ jobs:
           test "$digest" = "$EXPECTED_DIGEST"
           published_digest=$(skopeo inspect --authfile "$authfile" --format '{{.Digest}}' "docker://${IMAGE}")
           test "$published_digest" = "$EXPECTED_DIGEST"
-          printf '## Published native CPU image\n\nTag: `%s`\n\nImmutable reference: `%s@%s`\n\nThe tested OCI archive, including provenance and SBOM, was copied without rebuilding. No mutable latest tag or deployment.\n' \
+          printf '## Published native CPU image\n\nTag: <code>%s</code>\n\nImmutable reference: <code>%s@%s</code>\n\nThe tested OCI archive, including provenance and SBOM, was copied without rebuilding. No mutable latest tag or deployment.\n' \
             "$IMAGE" "${IMAGE%:*}" "$digest" >> "$GITHUB_STEP_SUMMARY"
