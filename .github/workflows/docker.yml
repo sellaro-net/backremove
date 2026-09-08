@@ -2,9 +2,16 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backremove-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io
@@ -12,46 +19,169 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow definitions
+        run: |
+          set -euo pipefail
+          tool_dir="${RUNNER_TEMP}/actionlint"
+          mkdir -p "$tool_dir"
+          curl -fsSL --retry 3 --retry-all-errors \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o "$tool_dir/actionlint.tar.gz"
+          printf '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  %s\n' \
+            "$tool_dir/actionlint.tar.gz" | sha256sum --check --status
+          tar -xzf "$tool_dir/actionlint.tar.gz" -C "$tool_dir" actionlint
+          "$tool_dir/actionlint" -color
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements*.txt
+
+      - name: Install verification tools and locked CPU dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pip install --require-hashes -r requirements-cpu.lock.txt
+          python -m pip check
+
+      - name: Verify dependency lock and security advisories
+        run: |
+          python -m uv --system-certs pip compile requirements.txt \
+            --python-version 3.12 --universal --generate-hashes --no-header \
+            --output-file requirements-cpu.lock.txt --quiet
+          git diff --exit-code -- requirements-cpu.lock.txt
+          python -m pip_audit --strict --disable-pip --require-hashes -r requirements-cpu.lock.txt
+
+      - name: Run application regression tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Set up Docker Buildx for PR verification
+        if: github.event_name == 'pull_request'
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build PR image without publishing
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: backremove-ci-backremove:latest
+          cache-from: |
+            type=gha,scope=backremove-pr
+            type=gha,scope=backremove
+          cache-to: type=gha,mode=max,scope=backremove-pr
+
+      - name: Verify the actual Compose service and authentication boundary
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          export API_KEY="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker compose -p backremove-ci logs --no-color || true
+            docker compose -p backremove-ci down --volumes --remove-orphans || true
+          }
+          trap cleanup EXIT
+          docker compose -p backremove-ci config --quiet
+          docker compose -p backremove-ci up -d --wait --wait-timeout 300 --no-build
+          curl -fsS http://127.0.0.1:8000/health | jq -e '.status == "ok" and .models.fast.loaded == true'
+          test "$(docker compose -p backremove-ci exec -T backremove id -u)" -ne 0
+          status=$(curl -sS -o "$RUNNER_TEMP/unauthorized.json" -w '%{http_code}' \
+            -F 'file=@requirements.txt;type=text/plain' http://127.0.0.1:8000/remove-bg)
+          test "$status" = 401
+          status=$(curl -sS -o "$RUNNER_TEMP/unsupported.json" -w '%{http_code}' \
+            -H "X-API-Key: ${API_KEY}" -F 'file=@requirements.txt;type=text/plain' \
+            http://127.0.0.1:8000/remove-bg)
+          test "$status" = 415
+
+      - name: Restore pinned model cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/huggingface
+          key: birefnet-${{ hashFiles('app/model.py', 'requirements-quality.txt') }}
+
+      - name: Verify the supported PyTorch and secure Transformers model path
+        timeout-minutes: 10
+        env:
+          HF_HOME: ${{ runner.temp }}/huggingface
+          TORCH_HOME: ${{ runner.temp }}/torch
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.0 torchvision==0.29.0
+          python -m pip install -r requirements-quality.txt
+          python -m pip check
+          python scripts/verify_quality_model.py
+
+      - name: Audit the complete installed model dependency graph
+        run: |
+          # PyTorch's +cpu wheel suffix is build metadata; PyPI advisories use
+          # the upstream public version. Every installed transitive is included.
+          python -m pip list --format=json \
+            | jq -r '.[] | "\(.name)==\(.version | split("+")[0])"' \
+            > "$RUNNER_TEMP/model-audit.txt"
+          python -m pip_audit --strict --disable-pip --no-deps -r "$RUNNER_TEMP/model-audit.txt"
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
+          persist-credentials: false
 
-      - name: Verify application
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip check
-          python -m unittest discover -s tests -v
+      - name: Resolve image name
+        id: image
+        run: echo "image=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase the repo name
-        run: echo "REPO_LOWERCASE=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+      - name: Resolve immutable tags and OCI metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.image.outputs.image }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=raw,value=latest
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - name: Build and publish verified source
+        id: publish
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ env.REGISTRY }}/${{ env.REPO_LOWERCASE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=backremove
+          cache-to: type=gha,mode=max,scope=backremove
+
+      - name: Report the actual immutable image reference
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          test -n "$DIGEST"
+          printf '## Published image\n\n%s@%s\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"

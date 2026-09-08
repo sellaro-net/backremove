@@ -1,7 +1,5 @@
-import ctypes
 import logging
 import os
-import site
 from enum import Enum
 from pathlib import Path
 
@@ -34,33 +32,6 @@ _model = None
 _quality_model = None
 _quality_preprocess = None
 _inference_provider = "unloaded"
-_dll_directory_handles = []
-_cuda_dll_handles = []
-
-
-def _prepare_cuda_runtime() -> None:
-    if os.name == "nt":
-        dll_dirs = []
-        for site_packages in site.getsitepackages():
-            nvidia_dir = Path(site_packages) / "nvidia"
-            if nvidia_dir.is_dir():
-                dll_dirs.extend(sorted(nvidia_dir.glob("*/bin")))
-
-        if dll_dirs:
-            os.environ["PATH"] = os.pathsep.join(
-                [*(str(path) for path in dll_dirs), os.environ.get("PATH", "")]
-            )
-            for dll_dir in dll_dirs:
-                _dll_directory_handles.append(os.add_dll_directory(str(dll_dir)))
-
-            for dll_dir in dll_dirs:
-                if dll_dir.parent.name != "cudnn":
-                    continue
-                for dll_path in sorted(dll_dir.glob("cudnn*.dll")):
-                    _cuda_dll_handles.append(ctypes.WinDLL(str(dll_path)))
-
-    if hasattr(ort, "preload_dlls"):
-        ort.preload_dlls(directory="")
 
 
 def _prepare_model_for_cuda(model_path: Path) -> Path:
@@ -137,7 +108,10 @@ class _CudaOpenWeightsModel(OpenWeightsModel):
         if self.model_path is None:
             raise RuntimeError("Model path was not resolved.")
 
-        _prepare_cuda_runtime()
+        import torch
+
+        # Import PyTorch first: its Windows loader also registers cuDNN sub-DLLs.
+        ort.preload_dlls(directory=str(Path(torch.__file__).parent / "lib"))
 
         available = ort.get_available_providers()
         if CUDA_PROVIDER not in available:
@@ -265,8 +239,9 @@ def load_quality_model():
             revision=BIREFNET_REVISION,
             trust_remote_code=True,
             local_files_only=True,
+            dtype=torch.float16,
         )
-        model = model.to("cuda").eval().half()
+        model = model.to("cuda").eval()
         preprocess = transforms.Compose(
             [
                 transforms.Resize((BIREFNET_INPUT_SIZE, BIREFNET_INPUT_SIZE)),
