@@ -3,8 +3,9 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
 torch==2.7.1+cu118 --hash=sha256:80855ec840b7b06372ff43535d01393a8ec101842618d1f9ed629572b52aed71
 torchvision==0.22.1+cu118 --hash=sha256:3e927a3b0b08c7582cfa09e5f16b35435de390a612cfe76eed1418ab7b68d6b6
-transformers==4.57.6 \
-    --hash=sha256:4c9e9de11333ddfe5114bc872c9f370509198acf0b87a832a0ab9458e2bd0550
+transformers==5.10.1 \
+    --hash=sha256:31112d1dcdfcf9934242acbba891f44e2279ff74b9b8ba4595640e0e04195a3a \
+    --hash=sha256:ccb919ea1b77338b44d0d45d23f7472081906b1bb6ed8e5f5cf4d692d1da03d4
 timm==1.0.29 \
     --hash=sha256:4266486e355c9beb9432e689de580d09e2efe7fa92a9a79e76c03e7763eac724
 kornia==0.8.3 \
