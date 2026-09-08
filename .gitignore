@@ -1,3 +1,9 @@
+# Native build products and private, reproducibly prepared release inputs
+target/
+artifacts/
+.artifacts-cache/
+.build-tools/
+
 # Python
 __pycache__/
 *.py[cod]

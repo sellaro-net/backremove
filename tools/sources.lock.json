@@ -1,0 +1,285 @@
+{
+  "version": 1,
+  "evidence": {
+    "archive_sha256": "4fcc415e6e22356e700aa7a20b00423eaecf1628ac1bc6c5c297c611ae15bcdb",
+    "exporter_sha256": "03e852fb4449d6b72ff31c26d8190695d23a583df957e45c37eaeb4b4b8008c8",
+    "fp16_converter_helper_sha256": "0c80713e8ccdc237d23cac027f7d6ca1424593deda856b8446b15a9c554782e1"
+  },
+  "sources": {
+    "fast-card": {
+      "url": "https://huggingface.co/withoutbg/withoutbg-openweights-onnx/resolve/a34f90ae16bcc5238afeedfa96251d097ecdc2fd/README.md",
+      "filename": "fast-model-card.txt",
+      "sha256": "805cf13abbeaf8fcaffeb4793f6a5f98d589553b3e15cbb4db671f000a17408f",
+      "size": 5747
+    },
+    "quality-card": {
+      "url": "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/README.md",
+      "filename": "quality-model-card.txt",
+      "sha256": "ceac4a1bb69b807eac5510bff80ff5599f606ef7458bee3b54b68d866e868532",
+      "size": 9965
+    },
+    "ort-windows-cuda": {
+      "url": "https://files.pythonhosted.org/packages/a4/e4/9b378a5466ea0bed65e5beb8e09254973c580a6522810a38afbcc45e5105/onnxruntime_gpu-1.26.0-cp312-cp312-win_amd64.whl",
+      "filename": "onnxruntime_gpu-1.26.0-cp312-cp312-win_amd64.whl",
+      "sha256": "5f49c44689894650990e4c8a857d2edafc276fbd79bba57ceb224bd18d25d491",
+      "size": 226548963
+    },
+    "ort-windows-cpu": {
+      "url": "https://files.pythonhosted.org/packages/44/fc/026d0a7162b9c2153dac292baea9e027c42304dc1d9dc6f8ff5b4cfbaedd/onnxruntime-1.26.0-cp312-cp312-win_amd64.whl",
+      "filename": "onnxruntime-1.26.0-cp312-cp312-win_amd64.whl",
+      "sha256": "a26374dc7fbcaae593601086b242120e13f2310558df0991da6dd8b8fac00414",
+      "size": 13026427
+    },
+    "ort-linux-cpu": {
+      "url": "https://files.pythonhosted.org/packages/7c/43/2a4e04f8dbeffad19bbcced4bcd4289bf478921518437404d6b92bdf213b/onnxruntime-1.26.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "filename": "onnxruntime-1.26.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "9b6dd70599005bd1bf29779f04a91978b92b5e719c11a20068a8f8e535f725b6",
+      "size": 18185439
+    },
+    "cuda_cudart": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.8.90-archive.zip",
+      "filename": "cuda_cudart-windows-x86_64-12.8.90-archive.zip",
+      "sha256": "4a39058fd8519444a81cfc7ae055d136f48d1a31ffa41ae255b35b2edd61e13b",
+      "size": 3037735,
+      "version": "12.8.90"
+    },
+    "cuda_nvrtc": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-12.8.93-archive.zip",
+      "filename": "cuda_nvrtc-windows-x86_64-12.8.93-archive.zip",
+      "sha256": "a63302a077f0248a743a1a7caa7dbd80d0fac56c6cfa9c41fa05fac9b7e5eda5",
+      "size": 305588898,
+      "version": "12.8.93"
+    },
+    "libcublas": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-12.8.4.1-archive.zip",
+      "filename": "libcublas-windows-x86_64-12.8.4.1-archive.zip",
+      "sha256": "57a470112cec7e112c95253dde8b3c7184d795dbd92b0bde77a4cb7f8c94c8aa",
+      "size": 563660944,
+      "version": "12.8.4.1"
+    },
+    "libcufft": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/windows-x86_64/libcufft-windows-x86_64-11.3.3.83-archive.zip",
+      "filename": "libcufft-windows-x86_64-11.3.3.83-archive.zip",
+      "sha256": "cc6e0ba958cf23387b462017a24464c72bd901549046133f3d1ebcc3d7444c90",
+      "size": 190568498,
+      "version": "11.3.3.83"
+    },
+    "libcurand": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcurand/windows-x86_64/libcurand-windows-x86_64-10.3.9.90-archive.zip",
+      "filename": "libcurand-windows-x86_64-10.3.9.90-archive.zip",
+      "sha256": "46eba36c20748b21a5927b569b943337dd18485132119dfb39a5bcda4edb12e2",
+      "size": 61958747,
+      "version": "10.3.9.90"
+    },
+    "libnvjitlink": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libnvjitlink/windows-x86_64/libnvjitlink-windows-x86_64-12.8.93-archive.zip",
+      "filename": "libnvjitlink-windows-x86_64-12.8.93-archive.zip",
+      "sha256": "5680b0a42ddf20f11705ca9c365d002f032ab876d3fe44382eeba633b558ccc0",
+      "size": 257345522,
+      "version": "12.8.93"
+    },
+    "cudnn": {
+      "url": "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-9.8.0.87_cuda12-archive.zip",
+      "filename": "cudnn-windows-x86_64-9.8.0.87_cuda12-archive.zip",
+      "sha256": "d8a23705e3884b137b7e05449fb2b61bfa524e7cfc3fda80743d633f423c6ce4",
+      "size": 675349654,
+      "version": "9.8.0.87"
+    },
+    "quality-config.json": {
+      "url": "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/config.json",
+      "filename": "quality-config.json",
+      "sha256": "c97ea21569daf66b205491a4635147dd3bc42c7c168b89d7d75b53f67ef548ae",
+      "size": 405,
+      "hf_path": "models--ZhengPeng7--BiRefNet/snapshots/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/config.json"
+    },
+    "quality-BiRefNet_config.py": {
+      "url": "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/BiRefNet_config.py",
+      "filename": "quality-BiRefNet_config.py",
+      "sha256": "e7b8c2a74f6cea6a59553d517f71d47f2c1d90e670a13416af17c25fe2f3dc52",
+      "size": 298,
+      "hf_path": "models--ZhengPeng7--BiRefNet/snapshots/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/BiRefNet_config.py"
+    },
+    "quality-birefnet.py": {
+      "url": "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/birefnet.py",
+      "filename": "quality-birefnet.py",
+      "sha256": "208771ae626f653d64128fbf2d6ac9f8e645c5cc5e286258a73ec3322bbfe5ef",
+      "size": 91896,
+      "hf_path": "models--ZhengPeng7--BiRefNet/snapshots/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/birefnet.py"
+    },
+    "quality-model.safetensors": {
+      "url": "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/model.safetensors",
+      "filename": "quality-model.safetensors",
+      "sha256": "9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154",
+      "size": 444473596,
+      "hf_path": "models--ZhengPeng7--BiRefNet/snapshots/e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4/model.safetensors"
+    },
+    "fast": {
+      "url": "https://huggingface.co/withoutbg/withoutbg-openweights-onnx/resolve/a34f90ae16bcc5238afeedfa96251d097ecdc2fd/withoutbg-open-weights.onnx",
+      "filename": "withoutbg-open-weights.onnx",
+      "sha256": "29930e48e9d5ecc56d6486c53c35a4c1470566c2a3359fa180b08c8d3c34ef0f",
+      "size": 454497726,
+      "hf_path": "models--withoutbg--withoutbg-openweights-onnx/snapshots/a34f90ae16bcc5238afeedfa96251d097ecdc2fd/withoutbg-open-weights.onnx"
+    },
+    "fast-sidecar": {
+      "url": "https://huggingface.co/withoutbg/withoutbg-openweights-onnx/resolve/a34f90ae16bcc5238afeedfa96251d097ecdc2fd/withoutbg-open-weights.onnx.json",
+      "filename": "withoutbg-open-weights.onnx.json",
+      "sha256": "6cb780035ee4f9e77b40bcd0d868c1eb5779d77c3ef3632b266d297837288e2a",
+      "size": 721,
+      "hf_path": "models--withoutbg--withoutbg-openweights-onnx/snapshots/a34f90ae16bcc5238afeedfa96251d097ecdc2fd/withoutbg-open-weights.onnx.json"
+    },
+    "withoutbg-licenses": {
+      "url": "https://files.pythonhosted.org/packages/3c/12/eaf4486031b28299e97b46687f07018b00a2f4923b7ae9793f8151db41ce/withoutbg-1.0.6-py3-none-any.whl",
+      "filename": "withoutbg-1.0.6-py3-none-any.whl",
+      "sha256": "5b80d79a6a33bffe0c10f922ba0cd6a4d85ee8efa18b69ee1149256c116d6833",
+      "size": 26078
+    },
+    "fonts-core": {
+      "url": "https://deb.debian.org/debian/pool/main/f/fonts-noto/fonts-noto-core_20201225-1_all.deb",
+      "filename": "fonts-noto-core_20201225-1_all.deb",
+      "sha256": "58f4f0bb6720f919f92096b3508e1412a0f1544424ade6c5b5bf1eb694dd64ba",
+      "size": 12192896
+    },
+    "fonts-mono": {
+      "url": "https://deb.debian.org/debian/pool/main/f/fonts-noto/fonts-noto-mono_20201225-1_all.deb",
+      "filename": "fonts-noto-mono_20201225-1_all.deb",
+      "sha256": "0807ec6454a6f66892159e7939a5c919ac28332e11d54ea78778577d9c569a59",
+      "size": 401776
+    }
+  },
+  "cuda_files": {
+    "cudart64_12.dll": {
+      "component": "cuda_cudart",
+      "sha256": "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344",
+      "size": 573952
+    },
+    "cublasLt64_12.dll": {
+      "component": "libcublas",
+      "sha256": "b199d1ff892a81b7fd3d57ba1781549609b41500b36008fef326038393ad46c7",
+      "size": 674667520
+    },
+    "cublas64_12.dll": {
+      "component": "libcublas",
+      "sha256": "9513540e4ec4c51ee9e7304138c2cc255c29a8c181f9e80c38efa25738becd99",
+      "size": 113716224
+    },
+    "cufft64_11.dll": {
+      "component": "libcufft",
+      "sha256": "f4fea9227b14843894ad5436725f9638b172171142c95291fc6ae7a493248221",
+      "size": 276121600
+    },
+    "curand64_10.dll": {
+      "component": "libcurand",
+      "sha256": "3465fd1b46e551339b8f44c455756a0f2cba8bd846562eb659040d48edb7aaac",
+      "size": 71955968
+    },
+    "nvrtc64_120_0.dll": {
+      "component": "cuda_nvrtc",
+      "sha256": "02d2d7ef4690bf1a55dda1d3ac94c86ce8d16920071c87bcd3e70e94ef346e93",
+      "size": 86728192
+    },
+    "nvrtc-builtins64_128.dll": {
+      "component": "cuda_nvrtc",
+      "sha256": "a7afa2a40cbd3f922a33d8bf71c13cb26ca707c7016a9bc5fcde36759ba668f5",
+      "size": 6356480
+    },
+    "nvJitLink_120_0.dll": {
+      "component": "libnvjitlink",
+      "sha256": "959d3cb44527ec884db8dc20772520b584dbe7d622d11b0530e6326417078b3e",
+      "size": 77860352
+    },
+    "cudnn64_9.dll": {
+      "component": "cudnn",
+      "sha256": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db",
+      "size": 265760
+    },
+    "cudnn_ops64_9.dll": {
+      "component": "cudnn",
+      "sha256": "080c2bb37e9d1fdd585cdd53fdbb23c0478b99610a19f8bba512b596b1e302fe",
+      "size": 116958752
+    },
+    "cudnn_heuristic64_9.dll": {
+      "component": "cudnn",
+      "sha256": "5378e50729665245fa5abe89c729b782de686675e9bd6319cda1a3165d9492e6",
+      "size": 55919648
+    },
+    "cudnn_graph64_9.dll": {
+      "component": "cudnn",
+      "sha256": "22c21907fb2108259cb25738156f4459c12c0a001715bbb6d5aafac150060e85",
+      "size": 2239520
+    },
+    "cudnn_engines_runtime_compiled64_9.dll": {
+      "component": "cudnn",
+      "sha256": "8671c24fc0debbd99c3dca57bfdf657f4c9490e2a009f641cfc2fcf7a1256180",
+      "size": 25217568
+    },
+    "cudnn_engines_precompiled64_9.dll": {
+      "component": "cudnn",
+      "sha256": "59e71b3adae62186d3336ccbda6d0c8b14a3a0ef21694757e2b32e84fa840152",
+      "size": 548927544
+    },
+    "cudnn_cnn64_9.dll": {
+      "component": "cudnn",
+      "sha256": "68c9f6bf98a5620a0bb0519c3997800ef2c7cb8979f17a60afcf82d341629c73",
+      "size": 4262456
+    },
+    "cudnn_adv64_9.dll": {
+      "component": "cudnn",
+      "sha256": "631af1130b27b4d14683c7da690dddec8e25ffe3097d498fbba7129faba1601c",
+      "size": 253583928
+    }
+  },
+  "font_files": {
+    "NotoSans-Bold.ttf": {
+      "component": "fonts-core",
+      "member": "./usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+      "sha256": "e83493c945848ecd4a9ad0f6d19164541a0d3e23a9c952304a00a46e00272ac5",
+      "size": 515752
+    },
+    "NotoSans-Regular.ttf": {
+      "component": "fonts-core",
+      "member": "./usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+      "sha256": "89c3c497f618fdaa0b2d1e98fef93582f28c71debd2c4a8cdf41f190ced2909d",
+      "size": 512672
+    },
+    "NotoSerif-Regular.ttf": {
+      "component": "fonts-core",
+      "member": "./usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
+      "sha256": "9d7583b7dc9e812afd32a14280c5cac3160012efe50c8d08938f4fea266ff67f",
+      "size": 588876
+    },
+    "NotoSansMono-Regular.ttf": {
+      "component": "fonts-mono",
+      "member": "./usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+      "sha256": "6b692c4b6d15ccf59f1c1fe8d11cb8a92f51960f3e9f1f523781755a3af7e29f",
+      "size": 510612
+    }
+  },
+  "export_versions": {
+    "torch": "2.7.1+cu118",
+    "torchvision": "0.22.1+cu118",
+    "transformers": "4.57.6",
+    "timm": "1.0.29",
+    "kornia": "0.8.3",
+    "einops": "0.8.2",
+    "safetensors": "0.8.0",
+    "huggingface-hub": "0.36.2",
+    "numpy": "1.26.4",
+    "onnx": "1.22.0"
+  },
+  "quality_revision": "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4",
+  "fast_revision": "a34f90ae16bcc5238afeedfa96251d097ecdc2fd",
+  "fast_derived_sha256": "53dd40f06c8be541c71651b02635ea9a0515b02fb3d604bdc273284b896333e6",
+  "quality_reference_sha256": "97b162897b0e131cb2aecd6ae3369b7b75138ef61b2f7b186d605a3568bf0756",
+  "ort_converter_sha256": "006a0d0a5c4592d18abd83ff9aa71bb8e63c76e2b335a33a63c3e998ac905dfb",
+  "dav1d": {
+    "version": "1.5.3",
+    "url": "https://github.com/videolan/dav1d/archive/refs/tags/1.5.3.tar.gz",
+    "sha512": "8d976b93135213d41385c20205475269a6826a68ebfd716c4d9a7a3ff2a79703e8df0573e43207c81b5db44807d2721db18ec84c0fc6bef98efab86a2cccb6cc",
+    "vcpkg_revision": "296b89248ad13be09e9324488eb4f74dd322d26c"
+  },
+  "birefnet_license": {
+    "path": "licenses/BiRefNet-LICENSE.txt",
+    "url": "https://github.com/ZhengPeng7/BiRefNet/blob/ebcc0bc8ec7fe919cec829f2dea656b3078acddc/LICENSE",
+    "sha256": "92a7089e0915fc32bc40067560b398f1e6a7a5958abd7d04eda393629a5acefb"
+  }
+}

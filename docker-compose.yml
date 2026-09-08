@@ -1,31 +1,41 @@
 services:
   backremove:
-    build: .
-    init: true
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
+    image: backremove-native:local-cpu
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 3g
-    volumes:
-      - model-cache:/home/appuser/.cache
+    init: true
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 3g
+    stop_grace_period: 35s
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
     environment:
       API_KEY: ${API_KEY:?Set API_KEY in .env}
+      HOST: 0.0.0.0
+      PORT: "8000"
+      INFERENCE_DEVICE: cpu
+      QUALITY_MODEL_ENABLED: "0"
+      ARTIFACT_MANIFEST: /opt/backremove/artifacts/linux-cpu/manifest.json
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      QUEUE_CAPACITY: ${QUEUE_CAPACITY:-8}
+      INPUT_BUDGET_MB: ${INPUT_BUDGET_MB:-256}
+      MEMORY_BUDGET_MB: ${MEMORY_BUDGET_MB:-1024}
+      FAST_TIMEOUT: ${FAST_TIMEOUT:-9}
+      QUALITY_TIMEOUT: ${QUALITY_TIMEOUT:-29}
+      SHUTDOWN_GRACE: "30"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "/opt/backremove/backremove", "--healthcheck"]
       interval: 30s
       timeout: 5s
-      start_period: 60s
+      start_period: 120s
       retries: 3
-
-volumes:
-  model-cache:
