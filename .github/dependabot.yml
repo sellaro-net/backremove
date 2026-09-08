@@ -15,6 +15,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # CUDA 13 wheels (1.27+) cannot run on the supported Pascal GPU.
+    # Keep the overlapping CPU/GPU distributions paired until that contract changes.
+    ignore:
+      - dependency-name: onnxruntime
+        versions: [">=1.27"]
+      - dependency-name: onnxruntime-gpu
+        versions: [">=1.27"]
     groups:
       model-libraries:
         patterns:
