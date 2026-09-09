@@ -36,6 +36,68 @@
       "sha256": "9b6dd70599005bd1bf29779f04a91978b92b5e719c11a20068a8f8e535f725b6",
       "size": 18185439
     },
+    "cuda_cudart-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.8.90-archive.tar.xz",
+      "filename": "cuda_cudart-linux-x86_64-12.8.90-archive.tar.xz",
+      "sha256": "8d566b5fe745c46842dc16945cf36686227536decd2302c372be86da37faca68",
+      "size": 1354240,
+      "version": "12.8.90",
+      "manifest": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json"
+    },
+    "cuda_nvrtc-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvrtc/linux-x86_64/cuda_nvrtc-linux-x86_64-12.8.93-archive.tar.xz",
+      "filename": "cuda_nvrtc-linux-x86_64-12.8.93-archive.tar.xz",
+      "sha256": "992f5e4d95cb499f41e442245efa877dbd60c711451afe680a26700d61eb3843",
+      "size": 114287212,
+      "version": "12.8.93",
+      "manifest": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json"
+    },
+    "libcublas-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-12.8.4.1-archive.tar.xz",
+      "filename": "libcublas-linux-x86_64-12.8.4.1-archive.tar.xz",
+      "sha256": "21718957c2cf000bacd69d36c95708a2319199e39e056f8b4f0f68e3b9f323bb",
+      "size": 938651324,
+      "version": "12.8.4.1",
+      "manifest": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json"
+    },
+    "libcufft-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/linux-x86_64/libcufft-linux-x86_64-11.3.3.83-archive.tar.xz",
+      "filename": "libcufft-linux-x86_64-11.3.3.83-archive.tar.xz",
+      "sha256": "126fe08fc0df07a7420c2da05a2ae72ea19660fff79bf06de16520d1f915cb83",
+      "size": 448695100,
+      "version": "11.3.3.83",
+      "manifest": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json"
+    },
+    "libcurand-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.3.9.90-archive.tar.xz",
+      "filename": "libcurand-linux-x86_64-10.3.9.90-archive.tar.xz",
+      "sha256": "32a5ec30be446c1b7228d1bc502b2f029cc8b59a5e362c70d960754fa646778b",
+      "size": 88606668,
+      "version": "10.3.9.90",
+      "manifest": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json"
+    },
+    "libnvjitlink-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libnvjitlink/linux-x86_64/libnvjitlink-linux-x86_64-12.8.93-archive.tar.xz",
+      "filename": "libnvjitlink-linux-x86_64-12.8.93-archive.tar.xz",
+      "sha256": "29220664ad272c513d3213133ace6d6590303e46b42a17b05bc2bee90e54a888",
+      "size": 53997360,
+      "version": "12.8.93",
+      "manifest": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json"
+    },
+    "cudnn-linux": {
+      "url": "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.8.0.87_cuda12-archive.tar.xz",
+      "filename": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive.tar.xz",
+      "sha256": "321b9b33bb1287404d93d5672d352f16feabc4b220ac6ae0b86e4b27f257dcf4",
+      "size": 923946888,
+      "version": "9.8.0.87",
+      "manifest": "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0.json"
+    },
+    "ort-linux-cuda": {
+      "url": "https://files.pythonhosted.org/packages/94/fd/59bee7cffaa435da44fefdeb63e29c61de4dbfa4b279852f59cd02c042ae/onnxruntime_gpu-1.26.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "filename": "onnxruntime_gpu-1.26.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "3c01119ed4d9449d60367fa8ccffcd02bd3fe736754284e4b198d131f54edad6",
+      "size": 276971796
+    },
     "cuda_cudart": {
       "url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.8.90-archive.zip",
       "filename": "cuda_cudart-windows-x86_64-12.8.90-archive.zip",
@@ -228,6 +290,104 @@
       "size": 253583928
     }
   },
+  "cuda_files_linux": {
+    "libcudart.so.12": {
+      "component": "cuda_cudart-linux",
+      "member": "cuda_cudart-linux-x86_64-12.8.90-archive/lib/libcudart.so.12.8.90",
+      "sha256": "c3a75b33af334a3486d197dbd1584a2985183ba4688d237a2be5f2f679329920",
+      "size": 728800
+    },
+    "libcublasLt.so.12": {
+      "component": "libcublas-linux",
+      "member": "libcublas-linux-x86_64-12.8.4.1-archive/lib/libcublasLt.so.12.8.4.1",
+      "sha256": "10b5e6631cf8115c661eb895ed1533826308b58f7956466f53d236a40c9b622c",
+      "size": 751771728
+    },
+    "libcublas.so.12": {
+      "component": "libcublas-linux",
+      "member": "libcublas-linux-x86_64-12.8.4.1-archive/lib/libcublas.so.12.8.4.1",
+      "sha256": "031ce6c2cbfbb9468f040527cab5c599069ce5609e73e28f87503881063eac21",
+      "size": 116388640
+    },
+    "libnvJitLink.so.12": {
+      "component": "libnvjitlink-linux",
+      "member": "libnvjitlink-linux-x86_64-12.8.93-archive/lib/libnvJitLink.so.12.8.93",
+      "sha256": "0369e6867d44b800437de4e146d72c65afc6c75adf677a15c2ecd8e6a7ac135f",
+      "size": 94101392
+    },
+    "libcufft.so.11": {
+      "component": "libcufft-linux",
+      "member": "libcufft-linux-x86_64-11.3.3.83-archive/lib/libcufft.so.11.3.3.83",
+      "sha256": "db7a606984097fdb7ad04f4bd09ade30b493e7cb360bb400037ff634dc208425",
+      "size": 278678584
+    },
+    "libcurand.so.10": {
+      "component": "libcurand-linux",
+      "member": "libcurand-linux-x86_64-10.3.9.90-archive/lib/libcurand.so.10.3.9.90",
+      "sha256": "f9bea038a2703b721571fd45a299a898141fd8cb264a5912635c95116f5960fe",
+      "size": 136749240
+    },
+    "libnvrtc-builtins.so.12.8": {
+      "component": "cuda_nvrtc-linux",
+      "member": "cuda_nvrtc-linux-x86_64-12.8.93-archive/lib/libnvrtc-builtins.so.12.8.93",
+      "sha256": "eccaa824230ee7858a94a3055cb01f1cb634df05d313880d0bdcf195161fcb4e",
+      "size": 6338504
+    },
+    "libnvrtc.so.12": {
+      "component": "cuda_nvrtc-linux",
+      "member": "cuda_nvrtc-linux-x86_64-12.8.93-archive/lib/libnvrtc.so.12.8.93",
+      "sha256": "2bb82d1a34b9fefa46aca357299aed66763d4d6613d015d5a591224c00fa7e5a",
+      "size": 104480432
+    },
+    "libcudnn.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn.so.9.8.0",
+      "sha256": "72f74476dcdc074b9d56f8c5cf576ceff6a595989832b9b0798478dc48a4ffcd",
+      "size": 125136
+    },
+    "libcudnn_graph.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_graph.so.9.8.0",
+      "sha256": "8adf356b5509ee8b5f28846a81387ebca6de12ea6b19858f9b2f43c0f0e3fe2b",
+      "size": 3134416
+    },
+    "libcudnn_ops.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_ops.so.9.8.0",
+      "sha256": "3d50a4f59aeb54dfc01ef66489e48925156c083e20e1ece423eb388f9e60d013",
+      "size": 118055872
+    },
+    "libcudnn_adv.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_adv.so.9.8.0",
+      "sha256": "fe1f1468f2af89ebb80446cbb822d823ebf01509111faed8c271131ef53f0db2",
+      "size": 255649752
+    },
+    "libcudnn_cnn.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_cnn.so.9.8.0",
+      "sha256": "39f017b44b7a1b17b2a8ce8d139b3b7e71e7c6f73eb2e3393b828edfc516753a",
+      "size": 4903984
+    },
+    "libcudnn_engines_precompiled.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_engines_precompiled.so.9.8.0",
+      "sha256": "ea76b125b1f43d123d8501339578af615af71765d7cb586dbdcb231ed338ce06",
+      "size": 581665056
+    },
+    "libcudnn_engines_runtime_compiled.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_engines_runtime_compiled.so.9.8.0",
+      "sha256": "7304751cddcc95e7a30b1cb8fe9ce82c9146862ed5882f245c2572994db58f9f",
+      "size": 26951112
+    },
+    "libcudnn_heuristic.so.9": {
+      "component": "cudnn-linux",
+      "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/lib/libcudnn_heuristic.so.9.8.0",
+      "sha256": "7a6044a3df8e5642cc7356aff57c856fcc06ff37c8dd932de4540b47325050a0",
+      "size": 56541008
+    }
+  },
   "font_files": {
     "NotoSans-Bold.ttf": {
       "component": "fonts-core",
@@ -266,11 +426,24 @@
     "numpy": "1.26.4",
     "onnx": "1.22.0"
   },
+  "export_versions_linux": {
+    "torch": "2.7.1+cpu",
+    "torchvision": "0.22.1+cpu",
+    "transformers": "4.57.6",
+    "timm": "1.0.29",
+    "kornia": "0.8.3",
+    "einops": "0.8.2",
+    "safetensors": "0.8.0",
+    "huggingface-hub": "0.36.2",
+    "numpy": "1.26.4",
+    "onnx": "1.22.0"
+  },
   "quality_revision": "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4",
   "fast_revision": "a34f90ae16bcc5238afeedfa96251d097ecdc2fd",
   "fast_derived_sha256": "53dd40f06c8be541c71651b02635ea9a0515b02fb3d604bdc273284b896333e6",
   "quality_reference_sha256": "97b162897b0e131cb2aecd6ae3369b7b75138ef61b2f7b186d605a3568bf0756",
   "ort_converter_sha256": "006a0d0a5c4592d18abd83ff9aa71bb8e63c76e2b335a33a63c3e998ac905dfb",
+  "ort_converter_linux_sha256": "db615887c7362c866c2ab7f02aa7e4beac0f28052487079dfe0efb7dd053798d",
   "dav1d": {
     "version": "1.5.3",
     "url": "https://github.com/videolan/dav1d/archive/refs/tags/1.5.3.tar.gz",

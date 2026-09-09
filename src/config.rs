@@ -86,6 +86,8 @@ impl Config {
             } else {
                 "artifacts/windows-cuda/manifest.json"
             }
+        } else if cfg!(target_os = "linux") && device == Device::Cuda {
+            "artifacts/linux-cuda/manifest.json"
         } else {
             "artifacts/linux-cpu/manifest.json"
         };

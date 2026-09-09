@@ -1,0 +1,18 @@
+{
+  "CUDA": {
+    "path": "licenses/CUDA-LICENSE.txt",
+    "sha256": "e2c71babfd18a8e69542dd7e9ca018f9caa438094001a58e6bc4d8c999bf0d07",
+    "source": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.8.90-archive.tar.xz",
+    "archive_sha256": "8d566b5fe745c46842dc16945cf36686227536decd2302c372be86da37faca68",
+    "member": "cuda_cudart-linux-x86_64-12.8.90-archive/LICENSE",
+    "version": "12.8.1"
+  },
+  "cuDNN": {
+    "path": "licenses/cuDNN-LICENSE-linux.txt",
+    "sha256": "295a1b7118d3417f5d6a943e5f87b59e2a0631fb277129c3b15dee6248adc7cf",
+    "source": "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.8.0.87_cuda12-archive.tar.xz",
+    "archive_sha256": "321b9b33bb1287404d93d5672d352f16feabc4b220ac6ae0b86e4b27f257dcf4",
+    "member": "cudnn-linux-x86_64-9.8.0.87_cuda12-archive/LICENSE",
+    "version": "9.8.0.87"
+  }
+}

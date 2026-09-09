@@ -147,6 +147,118 @@ vcpkg bootstrap/download cache and Cargo cache. `cargo fetch --locked` populates
 Cargo; an ordinary native build populates vcpkg. A Python/model download cache
 alone does not constitute a complete offline compiler environment.
 
+## Linux CUDA
+
+The native Linux x86_64 CUDA target uses the same Fast and Quality model
+contracts and ONNX Runtime **1.26.0** as Windows. Runtime prerequisites are a
+suitable NVIDIA driver, glibc, libstdc++, libgomp, zlib and dav1d **1.5.3**.
+The prepared pack contains private CUDA **12.8.1** and cuDNN
+**9.8.0.87** redistributables; a global CUDA toolkit is not a runtime requirement.
+This is a native executable target, **not a Linux CUDA Docker image**. The
+existing Dockerfile and published Linux image remain CPU-only.
+The pinned ORT wheel requires glibc **2.28 or newer**; the executable and dav1d
+also inherit requirements from their build host. The executable measured below
+references **GLIBC_2.43** symbols. It is not a portable binary for older Linux
+distributions; build on the intended deployment baseline.
+
+Build prerequisites are Rust **1.95.0**, Python **3.12 x64**, the dav1d headers
+and native build tools. Use an isolated, hash-locked export environment; Python
+and CPU-only PyTorch are preparation tools, not server dependencies:
+
+```bash
+python -m venv .build-tools/python
+.build-tools/python/bin/python -m pip install --require-hashes \
+  -r tools/requirements-export-linux.txt
+.build-tools/python/bin/python -B tools/prepare.py --target linux-cuda
+```
+
+Preparation downloads the exact official Linux wheels and NVIDIA
+redistributables in `tools/sources.lock.json`. If the pinned CUDA/cuDNN versions
+already exist in a local prefix, use them only as read-only, hash-checked sources:
+
+```bash
+.build-tools/python/bin/python -B tools/prepare.py --target linux-cuda \
+  --cuda-source /usr/local/cuda-12.8 \
+  --cudnn-source /usr/local/cuda-12.8
+```
+
+Selected libraries are copied privately into `artifacts/linux-cuda/`; source
+symlinks are resolved when reading, not installed as links back to the toolkit.
+Size or SHA-256 mismatches fail closed. Existing output packs are not overwritten.
+`--fetch-only` and `--offline` have the same meaning as for Windows; populate the
+isolated Python environment and source cache before offline preparation.
+Quality export and CPU folding run locally with the pinned Linux tool wheels,
+followed by the same Cast-aware FP16 conversion and graph/rounding checks.
+
+With dav1d already installed under `/opt/dav1d`:
+
+```bash
+export PKG_CONFIG_PATH=/opt/dav1d/lib/pkgconfig
+export SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=never
+export LD_LIBRARY_PATH=/opt/dav1d/lib
+cargo build --release --locked
+
+export API_KEY='<strong random key>'
+export HOST=127.0.0.1
+# Keep the assigned worktree PORT, or set a free port in your deployment.
+export INFERENCE_DEVICE=cuda QUALITY_MODEL_ENABLED=1
+export ARTIFACT_MANIFEST="$PWD/artifacts/linux-cuda/manifest.json"
+export BACKREMOVE_ORT_PROFILE_DIR="$PWD/.artifacts-cache/ort-profiles"
+./target/release/backremove
+```
+
+The loader preloads the checked private `.so` files in dependency order, verifies
+their loaded origins, and leaves CUDA provider initialization to ORT. Do not use
+`LD_PRELOAD` to inject another ORT/CUDA runtime. CUDA sessions retain disabled CPU
+fallback and TF32, bounded cuDNN workspace, and serialized model calls. Both
+enabled models must load and warm up before readiness. Profiling checks every
+provider-bearing warm-up node; a CPU-placed node fails startup. Unset
+`BACKREMOVE_ORT_PROFILE_DIR` for normal operation after release verification.
+
+From another shell with the same `PORT` and `API_KEY`:
+
+```bash
+curl --fail "http://127.0.0.1:${PORT}/health"
+./target/release/backremove --healthcheck
+curl --fail-with-body "http://127.0.0.1:${PORT}/remove-bg?model=fast" \
+  -H "X-API-Key: ${API_KEY}" -F "file=@photo.jpg" --output fast.png
+curl --fail-with-body "http://127.0.0.1:${PORT}/remove-bg?model=quality" \
+  -H "X-API-Key: ${API_KEY}" -F "file=@photo.jpg" --output quality.png
+```
+
+### Verified Linux CUDA run
+
+On 2026-09-09, the native release build was exercised on a GTX 1060 6 GB with
+driver **580.178.04**. Both resident sessions were enabled. `/health` returned
+`ready: true`, `CUDAExecutionProvider`, and `placement_audited: true` for both
+models; the native `--healthcheck` passed. A **640 × 853 JPEG photograph** was
+submitted three times per model, sequentially, after warm-up:
+
+| Model | HTTP result | Median inference header | Median HTTP wall time | CUDA warm-up node events | CPU node events |
+|---|---|---|---|---|---|
+| Fast | 3 × 200, RGBA PNG | 151.2 ms | 208.7 ms | 1,004 | 0 |
+| Quality | 3 × 200, RGBA PNG | 1,784.3 ms | 1,840.6 ms | 2,330 | 0 |
+
+All **20 DeformConv** events in Quality ran on CUDA. Output dimensions and alpha
+masks were checked; each model produced byte-identical PNGs across its three
+requests. Startup to health took **7.01 s**; sampled peak GPU memory was
+**4,339 MiB** (device total, not an isolated allocator measurement). This is one
+image/host smoke check, not a throughput benchmark or a broad image-quality
+evaluation.
+
+The run used `LD_LIBRARY_PATH=/opt/dav1d/lib`, with no toolkit search path.
+Loaded ORT/CUDA libraries came from the private pack. A separately injected
+host `libcudart.so.12` was rejected before model initialization. Both the
+hash-checked local-prefix route and the official-archive extraction route passed;
+a corrupt explicit source was rejected even with a populated cache.
+
+The Linux Quality artifact in this run has SHA-256
+`3b33a586f8c38623dee90ec141b5e92a729fbc49257e01d540c4adf55070efb3`.
+It is not byte-identical to the Windows reference below. The export passed the
+same graph/type invariants and IEEE-FP16 rounding checks for all **626** converted
+float tensors. Linux's pinned converter differs from Windows's only in LF/CRLF
+line endings.
+
 ## Artifact and precision contract
 
 `tools/sources.lock.json` pins source URLs, revisions, sizes and real hashes.
@@ -162,6 +274,7 @@ executes remote Python code or downloads a missing artifact at startup.
 | Quality | `ZhengPeng7/BiRefNet@e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4`; safetensors SHA-256 `9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154` |
 | ORT | Official **1.26.0** wheels; outer SHA-256 plus selected-file `RECORD` checks; only native loader files and license/SBOM material enter server packs |
 | Windows CUDA | Official `onnxruntime_gpu-1.26.0-cp312-cp312-win_amd64.whl`, SHA-256 `5f49c44689894650990e4c8a857d2edafc276fbd79bba57ceb224bd18d25d491`; CUDA 12.8.1 components and cuDNN 9.8.0.87 individually pinned |
+| Linux CUDA | Official `onnxruntime_gpu-1.26.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl`, SHA-256 `3c01119ed4d9449d60367fa8ccffcd02bd3fe736754284e4b198d131f54edad6`; separate Linux archive/member pins for CUDA 12.8.1 and cuDNN 9.8.0.87 |
 | AVIF | dav1d **1.5.3**, source archive SHA-512 pinned by vcpkg; no automatic dav1d-sys source fallback |
 | SVG fonts | Noto Sans Regular/Bold, Noto Serif Regular, Noto Sans Mono Regular from `fonts-noto-{core,mono}_20201225-1_all.deb`; exact TTF hashes and OFL-1.1 copyright/license included |
 
@@ -181,9 +294,10 @@ reference; serialized graph metadata may differ. A changed hash is **not** an
 automatic quality or GPU release approval. Native target-specific warmup,
 operator placement, image-quality and load checks remain required.
 
-Private CUDA dependencies are preloaded in the verified order. ORT itself
-initializes its provider DLL; `onnxruntime_providers_cuda.dll` is not directly
-preloaded. The known incompatible official C++ GPU ZIP is not a replacement for
+Private CUDA dependencies are preloaded in the verified platform-specific order.
+ORT itself initializes its provider library; `onnxruntime_providers_cuda.dll`
+and `libonnxruntime_providers_cuda.so` are not directly preloaded. The known
+incompatible official C++ GPU ZIP is not a replacement for
 the pinned wheel on the GTX 1060. CUDA sessions disable CPU fallback, parallel
 model calls, memory patterns and TF32, and use the verified bounded-workspace
 options. `BACKREMOVE_ORT_PROFILE_DIR` optionally captures startup profiles and

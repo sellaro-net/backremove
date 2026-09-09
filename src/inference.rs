@@ -668,12 +668,222 @@ fn prepare_native_loader(artifacts: &ArtifactSet, library: &Path) -> Result<()> 
     Ok(())
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn prepare_native_loader(artifacts: &ArtifactSet, library: &Path) -> Result<()> {
+    use libloading::os::unix::{Library, RTLD_GLOBAL, RTLD_NOW};
+    verify_loaded_libraries(artifacts, false)?;
+    // Loading absolute private paths first registers their SONAMEs globally.
+    // DT_NEEDED and vendor dlopen calls then reuse these references regardless
+    // of LD_LIBRARY_PATH. Provider bridges must still be initialized by ORT.
+    let load = |path: &Path| -> Result<()> {
+        let loaded = unsafe { Library::open(Some(path), RTLD_NOW | RTLD_GLOBAL) }
+            .map_err(|error| {
+                tracing::error!(%error, library = %path.display(), "Private native Bibliothek kann nicht geladen werden");
+                AppError::Unavailable
+            })?;
+        // into_raw deliberately retains a process-lifetime reference, including
+        // on startup errors: ORT and vendor libraries keep process-global state.
+        linux_loader::check_handle(loaded.into_raw(), path)
+    };
+    for entry in &artifacts.manifest.runtime.preload {
+        let path = artifacts.resolve(entry)?;
+        load(&path)?;
+        let name = path.file_name().ok_or(AppError::Unavailable)?;
+        if !linux_loader::check_soname(name, &path)? {
+            tracing::error!(library = %path.display(), "Private CUDA-Bibliothek registriert nicht den erforderlichen SONAME");
+            return Err(AppError::Unavailable);
+        }
+    }
+    load(library)?;
+    verify_loaded_libraries(artifacts, false)
+}
+
+#[cfg(target_os = "linux")]
+fn verify_loaded_libraries(artifacts: &ArtifactSet, require_provider: bool) -> Result<()> {
+    linux_loader::verify(artifacts, require_provider)
+}
+
+#[cfg(target_os = "linux")]
+mod linux_loader {
+    use super::*;
+    use libloading::os::unix::{Library, RTLD_NOW};
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, ptr};
+
+    // GNU/Linux dlfcn/link ABI. Only the documented common prefix is accessed.
+    const RTLD_NOLOAD: i32 = 4;
+    const RTLD_DI_LINKMAP: i32 = 2;
+
+    #[repr(C)]
+    struct LinkMap {
+        address: usize,
+        name: *const c_char,
+    }
+
+    #[repr(C)]
+    struct PhdrInfo {
+        address: usize,
+        name: *const c_char,
+    }
+
+    #[link(name = "dl")]
+    unsafe extern "C" {
+        fn dlinfo(handle: *mut c_void, request: i32, info: *mut *mut LinkMap) -> i32;
+        fn dl_iterate_phdr(
+            callback: unsafe extern "C" fn(*mut PhdrInfo, usize, *mut c_void) -> i32,
+            data: *mut c_void,
+        ) -> i32;
+    }
+
+    fn check_path(actual: &Path, expected: &Path) -> Result<()> {
+        let actual = fs::canonicalize(actual).map_err(|error| {
+            tracing::error!(%error, library = %actual.display(), "Geladener Bibliothekspfad ist nicht auflösbar");
+            AppError::Unavailable
+        })?;
+        if actual != expected {
+            tracing::error!(actual = %actual.display(), expected = %expected.display(),
+                "Fremde gleichnamige native Bibliothek wurde geladen");
+            return Err(AppError::Unavailable);
+        }
+        Ok(())
+    }
+
+    pub(super) fn check_handle(handle: *mut c_void, expected: &Path) -> Result<()> {
+        let mut map = ptr::null_mut();
+        if unsafe { dlinfo(handle, RTLD_DI_LINKMAP, &mut map) } != 0 || map.is_null() {
+            tracing::error!("Geladene ELF-Bibliothek kann nicht geprüft werden");
+            return Err(AppError::Unavailable);
+        }
+        let name = unsafe { (*map).name };
+        if name.is_null() {
+            return Err(AppError::Unavailable);
+        }
+        // The dlopen reference keeps this link-map entry and name alive.
+        let name = unsafe { CStr::from_ptr(name) };
+        check_path(Path::new(OsStr::from_bytes(name.to_bytes())), expected)
+    }
+
+    pub(super) fn check_soname(name: &OsStr, expected: &Path) -> Result<bool> {
+        // NOLOAD never searches by loading an ambient file or runs constructors.
+        // It also finds foreign files loaded under a different basename but
+        // advertising the expected SONAME (for example through LD_PRELOAD).
+        let Ok(loaded) = (unsafe { Library::open(Some(name), RTLD_NOW | RTLD_NOLOAD) }) else {
+            return Ok(false);
+        };
+        let handle = loaded.into_raw();
+        let loaded = unsafe { Library::from_raw(handle) };
+        let result = check_handle(handle, expected);
+        drop(loaded);
+        result.map(|()| true)
+    }
+
+    fn loaded_paths() -> Vec<PathBuf> {
+        unsafe extern "C" fn collect(info: *mut PhdrInfo, size: usize, data: *mut c_void) -> i32 {
+            if size >= std::mem::size_of::<PhdrInfo>() && !info.is_null() {
+                let name = unsafe { (*info).name };
+                if !name.is_null() {
+                    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+                    if !name.is_empty() {
+                        // dl_iterate_phdr holds the loader lock while invoking
+                        // us; copy the path before returning from the callback.
+                        let paths = unsafe { &mut *data.cast::<Vec<PathBuf>>() };
+                        paths.push(PathBuf::from(OsStr::from_bytes(name)));
+                    }
+                }
+            }
+            0
+        }
+        let mut paths = Vec::new();
+        unsafe { dl_iterate_phdr(collect, ptr::from_mut(&mut paths).cast()) };
+        paths
+    }
+
+    pub(super) fn verify(artifacts: &ArtifactSet, require_provider: bool) -> Result<()> {
+        let runtime = &artifacts.manifest.runtime;
+        let library = artifacts.resolve(&runtime.library)?;
+        let paths = runtime
+            .files
+            .iter()
+            .filter(|entry| {
+                Path::new(&entry.path)
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|name| name.contains(".so"))
+            })
+            .map(|entry| artifacts.resolve(&entry.path))
+            .collect::<Result<Vec<_>>>()?;
+        // Enumerate as well as query SONAMEs: dlopen(NOLOAD) returns only the
+        // first match and must not hide a second same-name loaded object.
+        for actual in loaded_paths() {
+            let Some(name) = actual.file_name() else {
+                continue;
+            };
+            let expected = if name
+                .to_str()
+                .is_some_and(|name| name.starts_with("libonnxruntime.so"))
+            {
+                Some(&library)
+            } else {
+                paths.iter().find(|path| path.file_name() == Some(name))
+            };
+            if let Some(expected) = expected {
+                check_path(&actual, expected)?;
+            }
+        }
+        for path in paths {
+            let name = path.file_name().ok_or(AppError::Unavailable)?;
+            check_soname(name, &path)?;
+            // The CUDA provider has no SONAME and ORT opens its absolute path.
+            let loaded = check_soname(path.as_os_str(), &path)?;
+            let required = path == library
+                || (runtime.provider == Provider::Cuda
+                    && (name == "libonnxruntime_providers_cuda.so"
+                        || name == "libonnxruntime_providers_shared.so"
+                        || name
+                            .to_str()
+                            .is_some_and(|name| crate::artifacts::CUDA_PRELOAD.contains(&name))));
+            if require_provider && required && !loaded {
+                tracing::error!(library = %path.display(), "Native Sitzung hat keine geprüfte private Bibliothek geladen");
+                return Err(AppError::Unavailable);
+            }
+            if require_provider && loaded {
+                tracing::info!(library = %path.display(), "Private native Bibliotheksherkunft nach Warm-up geprüft");
+            }
+        }
+        // The wheel's main library is copied to libonnxruntime.so, while ELF
+        // dependency lookup may use its versioned SONAME.
+        for alias in ["libonnxruntime.so.1", "libonnxruntime.so.1.26.0"] {
+            check_soname(OsStr::new(alias), &library)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(all(test, target_env = "gnu"))]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn loaded_soname_rejects_a_different_private_origin() {
+            let actual = loaded_paths()
+                .into_iter()
+                .find(|path| path.file_name() == Some(OsStr::new("libc.so.6")))
+                .expect("the GNU/Linux process has libc loaded");
+            let actual = fs::canonicalize(actual).unwrap();
+            assert!(check_soname(OsStr::new("libc.so.6"), &actual).unwrap());
+            let private = std::env::temp_dir().join("backremove-private/libc.so.6");
+            assert!(matches!(
+                check_soname(OsStr::new("libc.so.6"), &private),
+                Err(AppError::Unavailable)
+            ));
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn prepare_native_loader(_: &ArtifactSet, _: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn verify_loaded_libraries(_: &ArtifactSet, _: bool) -> Result<()> {
     Ok(())
 }
