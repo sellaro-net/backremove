@@ -154,8 +154,8 @@ contracts and ONNX Runtime **1.26.0** as Windows. Runtime prerequisites are a
 suitable NVIDIA driver, glibc, libstdc++, libgomp, zlib and dav1d **1.5.3**.
 The prepared pack contains private CUDA **12.8.1** and cuDNN
 **9.8.0.87** redistributables; a global CUDA toolkit is not a runtime requirement.
-This is a native executable target, **not a Linux CUDA Docker image**. The
-existing Dockerfile and published Linux image remain CPU-only.
+The standalone build below is separate from Docker. The Dockerfile also provides
+the explicit `runtime-cuda` target; its default target and CI publication remain CPU-only.
 The pinned ORT wheel requires glibc **2.28 or newer**; the executable and dav1d
 also inherit requirements from their build host. The executable measured below
 references **GLIBC_2.43** symbols. It is not a portable binary for older Linux
@@ -360,7 +360,7 @@ ghcr.io/sellaro-net/backremove:v2.0.0-native-cpu
 
 This describes the workflow's release contract, not confirmation that the image
 is already available. Windows CUDA builds are packaged separately as native
-release assets with their private runtime libraries; the Linux image is CPU-only.
+release assets with their private runtime libraries; CI's published Linux image is CPU-only.
 Branch/PR builds do not publish images. The native workflow does **not** create
 or update `latest`, deploy a service, or delete old package versions.
 
@@ -370,6 +370,142 @@ until an operator explicitly switches them. The former
 `ghcr.io/tentoxa/backremove` package is separate: moving the repository to the
 Sellaro organization does not move its images or repoint either package's
 existing `latest` tag.
+
+## Production Linux CUDA containers
+
+`docker-compose.cuda.yml` runs the native CUDA image and a digest-pinned
+cloudflared sidecar. Both are non-root with read-only filesystems, dropped
+capabilities, no-new-privileges, bounded memory/PIDs/tmpfs and rotated logs.
+Only BackRemove receives one NVIDIA GPU. Neither container receives the Docker
+socket, Python tooling, a mutable model cache or a published host port.
+
+The host needs the local rootful Docker Engine at `/var/run/docker.sock`, Docker
+Compose with GPU reservations, the NVIDIA Container Toolkit, a suitable driver,
+and an ordinary operator user permitted to access Docker. The optional host
+recovery timer needs Python **3.11+** and a systemd user manager; Python is
+**not in the native server image**. Keep Docker enabled at boot and enable
+lingering for the operator user if its user manager must survive logout.
+
+The tunnel shares BackRemove's network namespace and reaches its loopback
+listener. `BACKREMOVE_ORIGIN_PORT` must match the existing remotely managed
+tunnel origin, for example `http://localhost:8585`. This preserves an existing
+localhost origin without changing DNS or exposing a host port. Loopback is the
+explicit trusted proxy boundary. The token grants tunnel connection access,
+not permission to administer Cloudflare's DNS or security policies.
+
+### Build and install a release
+
+Build from a clean committed checkout. Preparation and compilation need no GPU;
+the executable is compiled inside the pinned Debian Bookworm baseline, not copied
+from the development host. The default CPU build is unchanged:
+
+```bash
+revision=$(git rev-parse HEAD)
+docker build --platform linux/amd64 --target runtime-cuda \
+  --build-arg SOURCE_REVISION="$revision" \
+  --tag "backremove:${revision}-cuda" .
+image=$(docker image inspect --format '{{.Id}}' "backremove:${revision}-cuda")
+```
+
+Provision `~/.config/backremove/native.env` containing the existing `API_KEY`
+assignment and `~/.config/backremove/tunnel.token` containing the existing
+remotely managed tunnel token. Use directory mode **0700** and file mode **0600**,
+owned by the non-root operator. Do not put secret values in shell arguments,
+Compose environment variables, Git, logs or the release directory. Local Compose
+secret mounts retain host ownership; both containers use that owner's UID/GID.
+Each container receives only its own credential file. The native executable
+reads its existing `.env` interface; no shell or Python server wrapper is added.
+
+Install configuration and host control files outside all worktrees:
+
+```bash
+test "$(id -u)" -ne 0
+home="$HOME/.local/share/backremove"
+release="$home/releases/$revision"
+install -d "$release/tools" "$release/ops" "$HOME/.local/bin" \
+  "$HOME/.config/systemd/user"
+install -m 0644 docker-compose.cuda.yml "$release/"
+install -m 0644 tools/recover_service.py "$release/tools/"
+install -m 0755 tools/backremove-service "$release/tools/"
+install -m 0644 ops/backremove-recover.service ops/backremove-recover.timer "$release/ops/"
+cat > "$release/deploy.env" <<EOF
+BACKREMOVE_IMAGE=$image
+CLOUDFLARED_IMAGE=cloudflare/cloudflared:2026.9.0@sha256:ff69a2225ad7c6f85ed84fbd5f3087df46202426b2388ec60214098e0adf05e9
+BACKREMOVE_UID=$(id -u)
+BACKREMOVE_GID=$(id -g)
+BACKREMOVE_SECRETS_DIR=$HOME/.config/backremove
+BACKREMOVE_ORIGIN_PORT=8585
+EOF
+# Initial installation only; do not overwrite another deployment's files.
+ln -s "releases/$revision" "$home/current"
+ln -s "$home/current/tools/backremove-service" "$HOME/.local/bin/backremove-service"
+install -m 0644 "$release"/ops/backremove-recover.* "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable backremove-recover.timer
+backremove-service start
+```
+
+The application image is pinned by its local content ID with `pull_policy: never`;
+cloudflared is pinned by registry digest. Keep the corresponding tagged images
+for rollback. Debian repositories are not snapshot-locked, so the image is not
+claimed byte-for-byte reproducible across fresh builds. The native inventories
+and image IDs identify the actual tested release.
+
+### Operation, recovery and GPU ownership
+
+```bash
+backremove-service status
+backremove-service logs --follow
+backremove-service stop
+backremove-service start
+backremove-service restart
+journalctl --user -u backremove-recover.service
+```
+
+Docker's `unless-stopped` policy handles process exits and daemon/host startup.
+The separate user timer checks every 30 seconds and handles sustained unhealthy
+state after Docker's three failed healthchecks. Recovery waits for native
+readiness and reattaches cloudflared after the GPU container restarts or is
+replaced. This matters because shared network namespaces do not automatically
+follow a replacement container. Recovery is capped at three attempts per service
+in ten minutes; persistent failures require inspecting logs, not a restart storm.
+Stopped or paused containers are not started by the watchdog.
+
+`backremove-service stop` stops both the recovery timer and containers.
+`restart` stops recovery, stops the stack, recreates both containers, waits for
+both healthchecks and resumes recovery. The host controls use a clean Compose
+environment and the explicit local Docker socket: development variables such
+as a worktree's `BACKREMOVE_PORT` cannot override the release configuration.
+
+**Quality stays enabled and both models remain resident.** The GTX 1060 6 GB
+validation used about **4.3 GiB VRAM** for the native process. Docker does not
+partition or reserve VRAM against unrelated GPU programs. Production owns this
+GPU: stop the service before any other CUDA inference/validation, and restore it
+afterward. Do not run a second replica or overlapping old/new CUDA releases.
+CPU preparation/build work does not require stopping the GPU service.
+
+For an update, build and validate a new image and prepare a new release directory
+with its content ID and cloudflared digest. Stop the service, atomically replace
+the `current` symlink with the new release, then run `backremove-service restart`.
+Keep the previous directory and image. Rollback uses the same stop, symlink switch
+and restart sequence with the previous release; never overwrite a running image
+tag or prune images retained for rollback. Secrets remain outside both releases.
+Neither service depends on a Windows volume or the source worktree at runtime.
+
+Validation must include real authenticated JPEG requests for **both** models,
+unauthorized rejection, native CUDA placement, container isolation, a controlled
+unhealthy/recovery scenario, and the public tunnel after restart. The initial
+container validation produced byte-identical Fast/Quality PNGs to the standalone
+Linux run above; temporary startup profiling recorded **1004 / 2330 CUDA node
+events and zero CPU nodes**. The CPU image still returned Fast PNG and
+`model_unavailable` for Quality. Startup profiling is not enabled for normal
+production traffic.
+
+The existing Cloudflare Browser Integrity Check may reject a generic Python
+urllib user agent with [error 1010](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/)
+before a request reaches BackRemove. The public JPEG checks use the actual Node
+`fetch` client with its default user agent. This deployment does not weaken the
+zone's existing edge security policy.
 
 ## HTTP contract
 

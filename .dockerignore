@@ -11,6 +11,11 @@
 !vendor/
 !vendor/**
 !Dockerfile
+!setup-gpu.ps1
+!start-gpu.bat
+!.env.example
+!docker-compose.yml
+!docker-compose.cuda.yml
 # Never include tool virtualenvs, cached models, keys or source Python app.
 tools/**/__pycache__/
 tools/**/*.pyc

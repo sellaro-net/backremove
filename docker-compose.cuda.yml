@@ -1,0 +1,101 @@
+name: backremove
+
+services:
+  backremove:
+    image: ${BACKREMOVE_IMAGE:?Set BACKREMOVE_IMAGE to the immutable local CUDA release image}
+    pull_policy: never
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "${BACKREMOVE_UID:?Set BACKREMOVE_UID to the host secret-owner UID}:${BACKREMOVE_GID:?Set BACKREMOVE_GID to the host secret-owner GID}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 8g
+    stop_grace_period: 35s
+    tmpfs:
+      - /tmp:size=256m,nosuid,nodev,mode=1777
+    environment:
+      HOST: 127.0.0.1
+      PORT: "${BACKREMOVE_ORIGIN_PORT:?Set BACKREMOVE_ORIGIN_PORT to the existing tunnel origin port}"
+      INFERENCE_DEVICE: cuda
+      QUALITY_MODEL_ENABLED: "1"
+      ARTIFACT_MANIFEST: /opt/backremove/artifacts/linux-cuda/manifest.json
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_CACHE_PATH: /tmp/nvidia-cache
+      CUDA_CACHE_MAXSIZE: "134217728"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUSTED_PROXIES: 127.0.0.1/32,::1/128
+      QUEUE_CAPACITY: ${QUEUE_CAPACITY:-8}
+      INPUT_BUDGET_MB: ${INPUT_BUDGET_MB:-256}
+      MEMORY_BUDGET_MB: ${MEMORY_BUDGET_MB:-1024}
+      FAST_TIMEOUT: ${FAST_TIMEOUT:-9}
+      QUALITY_TIMEOUT: ${QUALITY_TIMEOUT:-29}
+      SHUTDOWN_GRACE: "30"
+    secrets:
+      - source: native_env
+        target: /opt/backremove/.env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "/opt/backremove/backremove", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cloudflared:
+    image: ${CLOUDFLARED_IMAGE:?Set CLOUDFLARED_IMAGE to a digest-pinned cloudflared image}
+    platform: linux/amd64
+    network_mode: service:backremove
+    depends_on:
+      backremove:
+        condition: service_healthy
+        restart: true
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run", "--token-file", "/run/secrets/tunnel_token"]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "${BACKREMOVE_UID:?Set BACKREMOVE_UID to the host secret-owner UID}:${BACKREMOVE_GID:?Set BACKREMOVE_GID to the host secret-owner GID}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 256m
+    stop_grace_period: 35s
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev,mode=1777
+    secrets:
+      - source: tunnel_token
+        target: /run/secrets/tunnel_token
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Local Compose secrets retain host ownership and permissions. Keep these files
+# mode 0600, owned by BACKREMOVE_UID:BACKREMOVE_GID, in a private absolute directory.
+secrets:
+  native_env:
+    file: ${BACKREMOVE_SECRETS_DIR:?Set BACKREMOVE_SECRETS_DIR to the private absolute credential directory}/native.env
+  tunnel_token:
+    file: ${BACKREMOVE_SECRETS_DIR:?Set BACKREMOVE_SECRETS_DIR to the private absolute credential directory}/tunnel.token

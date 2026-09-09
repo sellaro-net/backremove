@@ -1,13 +1,24 @@
 # syntax=docker/dockerfile:1
 # All three official image manifests are pinned; target is deliberately linux/amd64.
-FROM python:3.12.9-slim-bookworm@sha256:48a11b7ba705fd53bf15248d1f94d36c39549903c5d59edcfa2f3f84126e7b44 AS artifacts
+FROM python:3.12.9-slim-bookworm@sha256:48a11b7ba705fd53bf15248d1f94d36c39549903c5d59edcfa2f3f84126e7b44 AS artifacts-base
 WORKDIR /src
 COPY tools/requirements-prepare.txt ./tools/
 RUN python -m pip install --disable-pip-version-check --timeout 30 --retries 2 \
     --require-hashes -r tools/requirements-prepare.txt
+
+FROM artifacts-base AS artifacts-cpu
 COPY tools/ ./tools/
 RUN --mount=type=cache,target=/src/.artifacts-cache,sharing=locked \
     python -B tools/prepare.py --target linux-cpu --output /artifact-pack
+
+# Export Quality with CPU-only build tooling; package only the pinned native CUDA libraries.
+FROM artifacts-base AS artifacts-cuda
+COPY tools/requirements-export-linux.txt ./tools/
+RUN python -m pip install --disable-pip-version-check --timeout 30 --retries 2 \
+    --require-hashes -r tools/requirements-export-linux.txt
+COPY tools/ ./tools/
+RUN --mount=type=cache,target=/src/.artifacts-cache,sharing=locked \
+    python -B tools/prepare.py --target linux-cuda --output /artifact-pack
 
 FROM rust:1.95.0-bookworm@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1 AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,11 +40,6 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src/ ./src/
 COPY vendor/ ./vendor/
-COPY tools/ ./tools/
-COPY Dockerfile ./
-COPY --from=artifacts /artifact-pack ./artifacts/linux-cpu/
-ARG SOURCE_REVISION=local
-ENV SOURCE_REVISION=${SOURCE_REVISION}
 RUN cargo fetch --locked \
     && cargo fmt --all -- --check \
     && cargo clippy --all-targets --release --locked --offline -- -D warnings \
@@ -41,30 +47,41 @@ RUN cargo fetch --locked \
     && cargo build --release --locked --offline \
     && mkdir -p /out/licenses/dav1d /out/provenance \
     && cp target/release/backremove /out/backremove \
-    && cp -a artifacts /out/artifacts \
     && cp /tmp/dav1d/COPYING /out/licenses/dav1d/COPYING.txt \
-    && dpkg-query -W > /out/provenance/build-system-packages.txt \
-    && python3 -B tools/build_inventory.py --output /out --dav1d-prefix /opt/dav1d
+    && dpkg-query -W > /out/provenance/build-system-packages.txt
+
+# Provenance-only inputs do not invalidate the shared native compilation.
+COPY tools/ ./tools/
+COPY Dockerfile setup-gpu.ps1 start-gpu.bat .env.example docker-compose.yml docker-compose.cuda.yml ./
+ARG SOURCE_REVISION=local
+ENV SOURCE_REVISION=${SOURCE_REVISION}
+
+FROM build AS release-cpu
+COPY --from=artifacts-cpu /artifact-pack/ /out/artifacts/linux-cpu/
+RUN python3 -B tools/build_inventory.py --output /out --dav1d-prefix /opt/dav1d \
+    && chmod -R a-w /out
+
+FROM build AS release-cuda
+COPY --from=artifacts-cuda /artifact-pack/ /out/artifacts/linux-cuda/
+RUN python3 -B tools/build_inventory.py --output /out --dav1d-prefix /opt/dav1d \
+    && chmod -R a-w /out
 
 # Native executable, native libraries, models, fonts and licenses only.
 # No Python executable/modules, PyTorch, exporter, compiler or CUDA toolkit.
-FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime-base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin backremove
 COPY --from=build /opt/dav1d/lib/libdav1d.so.7.0.0 /usr/local/lib/
-COPY --from=build /out/ /opt/backremove/
 RUN ldconfig \
+    && mkdir -p /opt/backremove/provenance \
     && dpkg-query -W > /opt/backremove/provenance/runtime-system-packages.txt \
     && chmod -R a-w /opt/backremove
 WORKDIR /opt/backremove
-ENV HOST=0.0.0.0 PORT=8000 INFERENCE_DEVICE=cpu QUALITY_MODEL_ENABLED=0 \
-    ARTIFACT_MANIFEST=/opt/backremove/artifacts/linux-cpu/manifest.json \
-    FAST_TIMEOUT=9 QUALITY_TIMEOUT=29 SHUTDOWN_GRACE=30
+ENV HOST=0.0.0.0 PORT=8000 FAST_TIMEOUT=9 QUALITY_TIMEOUT=29 SHUTDOWN_GRACE=30
 ARG SOURCE_REVISION=local
-LABEL org.opencontainers.image.title="BackRemove native CPU" \
-      org.opencontainers.image.description="Native Rust background removal. Built with DINOv3." \
+LABEL org.opencontainers.image.description="Native Rust background removal. Built with DINOv3." \
       org.opencontainers.image.source="https://github.com/sellaro-net/backremove" \
       org.opencontainers.image.version="2.0.0" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
@@ -74,3 +91,17 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD ["/opt/backremove/backremove", "--healthcheck"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/opt/backremove/backremove"]
+
+FROM runtime-base AS runtime-cuda
+COPY --from=release-cuda /out/ /opt/backremove/
+ENV INFERENCE_DEVICE=cuda QUALITY_MODEL_ENABLED=1 \
+    ARTIFACT_MANIFEST=/opt/backremove/artifacts/linux-cuda/manifest.json \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+LABEL org.opencontainers.image.title="BackRemove native CUDA"
+
+# Keep the last/default target CPU-only for existing docker build callers.
+FROM runtime-base AS runtime
+COPY --from=release-cpu /out/ /opt/backremove/
+ENV INFERENCE_DEVICE=cpu QUALITY_MODEL_ENABLED=0 \
+    ARTIFACT_MANIFEST=/opt/backremove/artifacts/linux-cpu/manifest.json
+LABEL org.opencontainers.image.title="BackRemove native CPU"

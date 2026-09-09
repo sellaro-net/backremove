@@ -1,0 +1,11 @@
+[Unit]
+Description=Check BackRemove CUDA health and tunnel attachment
+
+[Timer]
+OnBootSec=120s
+OnUnitInactiveSec=30s
+AccuracySec=5s
+Unit=backremove-recover.service
+
+[Install]
+WantedBy=timers.target

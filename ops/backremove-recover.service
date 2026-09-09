@@ -1,0 +1,10 @@
+[Unit]
+Description=Recover unhealthy BackRemove CUDA containers without exposing Docker to them
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/share/backremove/current/tools/recover_service.py %h/.local/share/backremove/current --state %h/.local/state/backremove/recovery.json
+TimeoutStartSec=300
+UMask=0077
+NoNewPrivileges=true
+Nice=10

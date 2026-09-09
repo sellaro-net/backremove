@@ -67,7 +67,8 @@ def main():
     for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "Dockerfile", "tools/sources.lock.json",
                  "tools/prepare.py", "tools/export_quality.py", "tools/requirements-prepare.txt", "tools/requirements-export-windows.txt",
                  "tools/requirements-export-linux.txt",
-                 "tools/build_inventory.py", "setup-gpu.ps1", "start-gpu.bat", ".env.example", "docker-compose.yml"):
+                 "tools/build_inventory.py", "setup-gpu.ps1", "start-gpu.bat", ".env.example", "docker-compose.yml",
+                 "docker-compose.cuda.yml"):
         path = ROOT / name
         if path.exists():
             source_inputs.append({"path": name, "sha256": digest(path)})
