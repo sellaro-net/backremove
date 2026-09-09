@@ -255,8 +255,9 @@ def topological_sort(graph):
     graph.node.extend(ordered)
 
 
-def export_fp32(snapshot, output, lock):
-    for name, expected in lock["export_versions"].items():
+def export_fp32(snapshot, output, lock, target):
+    versions = lock["export_versions_linux" if target == "linux-cuda" else "export_versions"]
+    for name, expected in versions.items():
         actual = importlib.metadata.version(name)
         if actual != expected:
             raise RuntimeError(f"Export-Dependency {name}: erwartet {expected}, gefunden {actual}")
@@ -289,7 +290,7 @@ def export_fp32(snapshot, output, lock):
             dynamic_axes=None, do_constant_folding=True,
         )
     report = {"stage": "fp32-export", "opset": 19, "dynamo": False,
-              "device": "cpu", "versions": lock["export_versions"],
+              "device": "cpu", "versions": versions,
               "warnings": list(dict.fromkeys(str(item.message) for item in captured))}
     del wrapper, model, example, captured
     gc.collect()
@@ -318,10 +319,11 @@ def fold_fp32(source, output, ort_python_root):
             "optimization": "ORT_ENABLE_BASIC", "inference_executed": False}
 
 
-def convert_fp16(source, output, converter_path, lock):
+def convert_fp16(source, output, converter_path, lock, target):
     import numpy as np
     import onnx
-    if sha256(converter_path) != lock["ort_converter_sha256"]:
+    converter_hash = lock["ort_converter_linux_sha256" if target == "linux-cuda" else "ort_converter_sha256"]
+    if sha256(converter_path) != converter_hash:
         raise ValueError("ORT-FP16-Konverter hat einen unerwarteten Hash")
     spec = importlib.util.spec_from_file_location("pinned_ort_float16", converter_path)
     converter = importlib.util.module_from_spec(spec)
@@ -380,7 +382,11 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--ort-python-root", type=Path)
     parser.add_argument("--converter", type=Path)
+    parser.add_argument("--target", required=True, choices=["windows-cuda", "linux-cuda"])
     args = parser.parse_args()
+    platform = "linux" if args.target == "linux-cuda" else "win32"
+    if sys.platform != platform or sys.version_info[:2] != (3, 12):
+        parser.error("Quality-Export benötigt natives Python 3.12 auf der Zielplattform")
     output = args.output.resolve()
     source = args.source.resolve()
     if output.exists() or output == source:
@@ -389,7 +395,7 @@ def main():
     isolate_caches(output.parent / "offline-caches", cpu_only=True)
     lock = json.loads(Path(__file__).with_name("sources.lock.json").read_text())
     if args.stage == "export":
-        report = export_fp32(source, output, lock)
+        report = export_fp32(source, output, lock, args.target)
     elif args.stage == "fold":
         if args.ort_python_root is None:
             parser.error("--ort-python-root fehlt")
@@ -397,9 +403,9 @@ def main():
     else:
         if args.converter is None:
             parser.error("--converter fehlt")
-        report = convert_fp16(source, output, args.converter.resolve(), lock)
+        report = convert_fp16(source, output, args.converter.resolve(), lock, args.target)
     report.update({"status": "ok", "artifact": file_record(output),
-                   "script": file_record(__file__), "python": sys.version})
+                   "script": file_record(__file__), "python": sys.version, "target": args.target})
     dump_json(output.with_suffix(".provenance.json"), report)
     print(json.dumps({"status": "ok", "output": str(output), "sha256": sha256(output)}), flush=True)
 

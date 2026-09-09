@@ -17,6 +17,7 @@ pub const RUNTIME_API: u32 = 26;
 
 // This is the order exercised by the full-model GTX 1060 probe. Provider DLLs
 // are deliberately absent: ORT must initialize its bridge before loading them.
+#[cfg(not(target_os = "linux"))]
 pub(crate) const CUDA_PRELOAD: &[&str] = &[
     "cudart64_12.dll",
     "cublasLt64_12.dll",
@@ -33,6 +34,47 @@ pub(crate) const CUDA_PRELOAD: &[&str] = &[
     "cudnn_engines_runtime_compiled64_9.dll",
     "cudnn_heuristic64_9.dll",
 ];
+
+#[cfg(target_os = "linux")]
+pub(crate) const CUDA_PRELOAD: &[&str] = &[
+    "libcudart.so.12",
+    "libcublasLt.so.12",
+    "libcublas.so.12",
+    "libnvJitLink.so.12",
+    "libcufft.so.11",
+    "libcurand.so.10",
+    "libnvrtc-builtins.so.12.8",
+    "libnvrtc.so.12",
+    "libcudnn.so.9",
+    "libcudnn_graph.so.9",
+    "libcudnn_ops.so.9",
+    "libcudnn_adv.so.9",
+    "libcudnn_cnn.so.9",
+    "libcudnn_engines_precompiled.so.9",
+    "libcudnn_engines_runtime_compiled.so.9",
+    "libcudnn_heuristic.so.9",
+];
+
+#[cfg(not(target_os = "linux"))]
+const CUDA_REQUIRED: &[&str] = &[
+    "curand64_10.dll",
+    "nvJitLink_120_0.dll",
+    "onnxruntime_providers_shared.dll",
+    "onnxruntime_providers_cuda.dll",
+];
+#[cfg(target_os = "linux")]
+const CUDA_REQUIRED: &[&str] = &[
+    "libonnxruntime_providers_shared.so",
+    "libonnxruntime_providers_cuda.so",
+];
+
+#[cfg(not(target_os = "linux"))]
+const CUDA_PROVIDERS: &[&str] = &[
+    "onnxruntime_providers_shared.dll",
+    "onnxruntime_providers_cuda.dll",
+];
+#[cfg(target_os = "linux")]
+const CUDA_PROVIDERS: &[&str] = CUDA_REQUIRED;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -60,8 +102,13 @@ impl Provider {
             );
             return Err(AppError::Unavailable);
         }
-        if self == Self::Cuda && !cfg!(all(windows, target_arch = "x86_64")) {
-            tracing::error!("Das geprüfte CUDA-Paket erfordert Windows x64");
+        if self == Self::Cuda
+            && !cfg!(all(
+                any(windows, target_os = "linux"),
+                target_arch = "x86_64"
+            ))
+        {
+            tracing::error!("Das geprüfte CUDA-Paket erfordert Windows oder Linux x64");
             return Err(AppError::Unavailable);
         }
         Ok(())
@@ -283,6 +330,10 @@ impl ArtifactSet {
             tracing::error!("Runtime-Bibliothek passt nicht zum Betriebssystem");
             return Err(AppError::Unavailable);
         }
+        #[cfg(target_os = "linux")]
+        if runtime.provider == Provider::Cuda {
+            self.validate_linux_cuda_layout()?;
+        }
         let library = self.resolve(&runtime.library)?;
         let mut verified = HashSet::new();
         let mut names = HashSet::new();
@@ -325,16 +376,11 @@ impl ArtifactSet {
                     .eq(CUDA_PRELOAD.iter().copied())
                 {
                     tracing::error!(
-                        "CUDA-Preloadliste entspricht nicht der geprüften DLL-Reihenfolge"
+                        "CUDA-Preloadliste entspricht nicht der geprüften Bibliotheksreihenfolge"
                     );
                     return Err(AppError::Unavailable);
                 }
-                for required in [
-                    "curand64_10.dll",
-                    "nvJitLink_120_0.dll",
-                    "onnxruntime_providers_shared.dll",
-                    "onnxruntime_providers_cuda.dll",
-                ] {
+                for required in CUDA_REQUIRED {
                     if !names.contains(&required.to_ascii_lowercase()) {
                         tracing::error!(
                             dependency = required,
@@ -344,10 +390,7 @@ impl ArtifactSet {
                     }
                 }
                 let directory = library.parent().ok_or(AppError::Unavailable)?;
-                for provider in [
-                    "onnxruntime_providers_shared.dll",
-                    "onnxruntime_providers_cuda.dll",
-                ] {
+                for provider in CUDA_PROVIDERS {
                     let path = fs::canonicalize(directory.join(provider)).map_err(|error| {
                         tracing::error!(%error, dependency = provider, "ORT-Provider liegt nicht neben der Runtime");
                         AppError::Unavailable
@@ -363,6 +406,57 @@ impl ArtifactSet {
                 return Err(AppError::Unavailable);
             }
             Provider::Cpu => {}
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn validate_linux_cuda_layout(&self) -> Result<()> {
+        let runtime = &self.manifest.runtime;
+        if runtime.library != "runtime/libonnxruntime.so"
+            || !runtime
+                .preload
+                .iter()
+                .map(|path| path.strip_prefix("runtime/cuda/"))
+                .eq(CUDA_PRELOAD.iter().copied().map(Some))
+        {
+            tracing::error!("Linux-CUDA-Paket hat kein freigegebenes privates Runtime-Layout");
+            return Err(AppError::Unavailable);
+        }
+        for entry in &runtime.files {
+            let path = Path::new(&entry.path);
+            let name = path.file_name().and_then(|name| name.to_str());
+            let allowed = entry.path == runtime.library
+                || (path.parent() == Some(Path::new("runtime"))
+                    && name.is_some_and(|name| CUDA_PROVIDERS.contains(&name)))
+                || (path.parent() == Some(Path::new("runtime/cuda"))
+                    && name.is_some_and(|name| CUDA_PRELOAD.contains(&name)));
+            let unresolved = self.root.join(&entry.path);
+            let metadata = fs::symlink_metadata(&unresolved).map_err(|error| {
+                tracing::error!(%error, artifact = %entry.path, "Linux-Runtime-Datei ist nicht erreichbar");
+                AppError::Unavailable
+            })?;
+            if !allowed
+                || !metadata.file_type().is_file()
+                || self.resolve(&entry.path)? != unresolved
+            {
+                tracing::error!(artifact = %entry.path, "Linux-CUDA benötigt reguläre private Bibliothekskopien ohne Umleitungen");
+                return Err(AppError::Unavailable);
+            }
+            let mut header = [0_u8; 20];
+            File::open(unresolved)
+                .and_then(|mut file| file.read_exact(&mut header))
+                .map_err(|error| {
+                    tracing::error!(%error, artifact = %entry.path, "Linux-ELF-Kopf ist nicht lesbar");
+                    AppError::Unavailable
+                })?;
+            if &header[..7] != b"\x7fELF\x02\x01\x01"
+                || u16::from_le_bytes([header[16], header[17]]) != 3
+                || u16::from_le_bytes([header[18], header[19]]) != 62
+            {
+                tracing::error!(artifact = %entry.path, "Linux-CUDA-Bibliothek ist kein ELF64-x86_64-Shared-Object");
+                return Err(AppError::Unavailable);
+            }
         }
         Ok(())
     }

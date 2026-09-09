@@ -33,6 +33,13 @@ PRELOAD = (
     "cudnn_engines_precompiled64_9.dll", "cudnn_engines_runtime_compiled64_9.dll",
     "cudnn_heuristic64_9.dll",
 )
+LINUX_PRELOAD = (
+    "libcudart.so.12", "libcublasLt.so.12", "libcublas.so.12", "libnvJitLink.so.12",
+    "libcufft.so.11", "libcurand.so.10", "libnvrtc-builtins.so.12.8", "libnvrtc.so.12",
+    "libcudnn.so.9", "libcudnn_graph.so.9", "libcudnn_ops.so.9", "libcudnn_adv.so.9",
+    "libcudnn_cnn.so.9", "libcudnn_engines_precompiled.so.9",
+    "libcudnn_engines_runtime_compiled.so.9", "libcudnn_heuristic.so.9",
+)
 
 
 def sha256(path):
@@ -133,8 +140,10 @@ def package_runtime(wheel_path, target, output):
     native = ["onnxruntime.dll", "onnxruntime_providers_shared.dll"]
     if target == "windows-cuda":
         native.append("onnxruntime_providers_cuda.dll")
-    elif target == "linux-cpu":
+    elif target.startswith("linux-"):
         native = ["libonnxruntime.so.1.26.0", "libonnxruntime_providers_shared.so"]
+        if target == "linux-cuda":
+            native.append("libonnxruntime_providers_cuda.so")
     with zipfile.ZipFile(wheel_path) as wheel:
         records = wheel_records(wheel)
         for name in native:
@@ -146,7 +155,7 @@ def package_runtime(wheel_path, target, output):
             raise ValueError("ORT-Lizenzinventar unvollständig")
         for name in licenses:
             wheel_extract(wheel, records, name, output / "licenses" / "onnxruntime" / Path(name).name)
-    return "runtime/libonnxruntime.so" if target == "linux-cpu" else "runtime/onnxruntime.dll"
+    return "runtime/libonnxruntime.so" if target.startswith("linux-") else "runtime/onnxruntime.dll"
 
 
 def extract_cpu_tool_wheel(wheel_path, destination):
@@ -164,7 +173,56 @@ def extract_cpu_tool_wheel(wheel_path, destination):
             wheel_extract(wheel, records, member, destination / relative)
 
 
+def linux_cuda_inputs(args):
+    pins = LOCK["cuda_files_linux"]
+    native = args.cache / "native-linux-cuda"
+    if native.is_symlink():
+        raise ValueError(f"Privater CUDA-Cache darf kein Symlink sein: {native}")
+    paths = {}
+    pending = {}
+    for name, pin in pins.items():
+        cached = native / name
+        if cached.is_symlink():
+            raise ValueError(f"Private CUDA-Datei darf kein Symlink sein: {cached}")
+        source_dir = args.cudnn_source if pin["component"] == "cudnn-linux" else args.cuda_source
+        if source_dir is not None:
+            candidates = [source_dir / name, source_dir / "lib64" / name]
+            matches = [path for path in candidates if path.exists() or path.is_symlink()]
+            if len(matches) != 1:
+                raise ValueError(f"CUDA-Quelle fehlt oder ist mehrdeutig: {source_dir}/{name}")
+            # Only the explicitly supplied, hash-checked source may contain symlinks.
+            source = verify(matches[0].resolve(strict=True), pin)
+            paths[name] = verify(cached, pin) if cached.exists() else copy_private(source, cached, pin)
+        elif cached.exists():
+            paths[name] = verify(cached, pin)
+        else:
+            pending.setdefault(pin["component"], {})[pin["member"]] = (name, pin)
+    for component, members in pending.items():
+        archive_path = fetch(LOCK["sources"][component], args)
+        found = set()
+        # One forward pass per compressed archive; never extract a tree or follow
+        # archive links. The lock names the versioned regular file, not its SONAME link.
+        with tarfile.open(archive_path, mode="r|xz") as archive:
+            for member in archive:
+                if member.name not in members:
+                    continue
+                name, pin = members[member.name]
+                if member.name in found or not member.isfile() or member.size != pin["size"]:
+                    raise ValueError(f"Ungültige CUDA-Archivdatei: {member.name}")
+                found.add(member.name)
+                cached = native / name
+                cached.parent.mkdir(parents=True, exist_ok=True)
+                with archive.extractfile(member) as source, cached.open("xb") as destination:
+                    shutil.copyfileobj(source, destination, CHUNK)
+                paths[name] = verify(cached, pin)
+        if found != members.keys():
+            raise ValueError(f"CUDA-Archivdateien fehlen: {sorted(members.keys() - found)}")
+    return paths
+
+
 def cuda_inputs(args):
+    if args.target == "linux-cuda":
+        return linux_cuda_inputs(args)
     paths = {}
     archives = {}
     for name, pin in LOCK["cuda_files"].items():
@@ -240,14 +298,15 @@ def package_licenses(inputs, output, target):
             member = "withoutbg-1.0.6.dist-info/licenses/" + name
             wheel_extract(wheel, records, member, output / "licenses" / "withoutbg" / name)
     copy_private(inputs["fast-card"], output / "licenses" / "fast-model-card.txt")
-    if target == "windows-cuda":
+    if target.endswith("-cuda"):
         copy_private(inputs["quality-card"], output / "licenses" / "quality-model-card.txt")
         pin = LOCK["birefnet_license"]
         source = TOOLS / pin["path"]
         if sha256(source) != pin["sha256"]:
             raise ValueError("BiRefNet-Lizenz verändert")
         copy_private(source, output / "licenses" / source.name)
-        for pin in json.loads((TOOLS / "licenses/provenance.json").read_text()).values():
+        provenance = "provenance-linux.json" if target == "linux-cuda" else "provenance.json"
+        for pin in json.loads((TOOLS / "licenses" / provenance).read_text()).values():
             source = TOOLS / pin["path"]
             if sha256(source) != pin["sha256"]:
                 raise ValueError("NVIDIA-Lizenz verändert")
@@ -304,7 +363,7 @@ def quality_stage(stage, source, destination, args, extra=()):
             raise ValueError(f"Veralteter oder beschädigter Offline-Build: {destination}")
         return
     command = [str(args.tool_python), "-B", str(TOOLS / "export_quality.py"), stage,
-               "--source", str(source), "--output", str(destination), *map(str, extra)]
+               "--source", str(source), "--output", str(destination), "--target", args.target, *map(str, extra)]
     environment = dict(os.environ, CUDA_VISIBLE_DEVICES="-1", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
                        PYTHONDONTWRITEBYTECODE="1", PYTHONHASHSEED="0")
     subprocess.run(command, check=True, timeout=args.export_timeout, env=environment)
@@ -312,14 +371,18 @@ def quality_stage(stage, source, destination, args, extra=()):
 
 def package_quality(inputs, output, args):
     build_id = hashlib.sha256((sha256(LOCK_PATH) + sha256(TOOLS / "export_quality.py")).encode()).hexdigest()[:16]
-    work = args.cache / "work" / build_id
+    work = args.cache / "work"
+    if args.target == "linux-cuda":
+        work /= args.target
+    work /= build_id
     snapshot = work / LOCK["quality_revision"]
     for name in ("config.json", "BiRefNet_config.py", "birefnet.py", "model.safetensors"):
         copy_private(inputs["quality-" + name], snapshot / name, LOCK["sources"]["quality-" + name])
     ort_root = work / "cpu-wheel"
-    extract_cpu_tool_wheel(inputs["ort-windows-cpu"], ort_root)
+    platform = args.target.removesuffix("-cuda")
+    extract_cpu_tool_wheel(inputs[f"ort-{platform}-cpu"], ort_root)
     converter_path = work / "ort-float16.py"
-    with zipfile.ZipFile(inputs["ort-windows-cuda"]) as wheel:
+    with zipfile.ZipFile(inputs["ort-" + args.target]) as wheel:
         wheel_extract(wheel, wheel_records(wheel), "onnxruntime/transformers/float16.py", converter_path)
     fp32 = work / "quality-fp32.onnx"
     folded = work / "quality-basic-fp32.onnx"
@@ -338,12 +401,12 @@ def package_quality(inputs, output, args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--target", required=True, choices=["windows-cuda", "windows-cpu", "linux-cpu"])
+    parser.add_argument("--target", required=True, choices=["windows-cuda", "windows-cpu", "linux-cpu", "linux-cuda"])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--cache", type=Path, default=ROOT / ".artifacts-cache")
     parser.add_argument("--hf-cache", type=Path, default=Path.home() / ".cache/huggingface/hub")
-    parser.add_argument("--cuda-source", type=Path, help="Optionaler CUDA-12.8.1-bin-Ordner, nur als geprüfte Kopierquelle")
-    parser.add_argument("--cudnn-source", type=Path, help="Optionaler cuDNN-9.8.0.87-CUDA12-bin-Ordner")
+    parser.add_argument("--cuda-source", type=Path, help="Geprüfte Kopierquelle: CUDA-12.8.1-bin (Windows), Präfix oder lib64 (Linux)")
+    parser.add_argument("--cudnn-source", type=Path, help="Geprüfte Kopierquelle: cuDNN-9.8.0.87-CUDA12-bin (Windows), Präfix oder lib64 (Linux)")
     parser.add_argument("--tool-python", type=Path, default=Path(sys.executable))
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--fetch-only", action="store_true")
@@ -354,19 +417,29 @@ def main():
         parser.error("Zeitbudgets liegen außerhalb der erlaubten Grenzen")
     if args.target == "windows-cuda" and sys.platform != "win32" and not args.fetch_only:
         parser.error("Der geprüfte Quality-Export benötigt Windows x64 mit den gepinnten Build-Wheels")
+    if args.target == "linux-cuda" and sys.platform != "linux" and not args.fetch_only:
+        parser.error("Linux-Quality-Export benötigt Linux x64 mit den gepinnten Build-Wheels")
     args.cache = args.cache.resolve()
+    if args.target == "linux-cuda":
+        for source in (args.cuda_source, args.cudnn_source):
+            if source is not None and args.cache.is_relative_to(source.resolve()):
+                parser.error("Der private Cache darf nicht innerhalb einer schreibgeschützten CUDA-Quelle liegen")
     args.cache.mkdir(parents=True, exist_ok=True)
-    args.tool_python = args.tool_python.resolve()
+    # Resolving a Linux venv's python symlink discards its isolated site-packages.
+    args.tool_python = args.tool_python.absolute() if args.target == "linux-cuda" else args.tool_python.resolve()
     keys = ["fast", "fast-sidecar", "fast-card", "fonts-core", "fonts-mono", "withoutbg-licenses", "ort-" + args.target]
-    if args.target == "windows-cuda":
-        keys += ["quality-card", "ort-windows-cpu"] + ["quality-" + name for name in
+    if args.target.endswith("-cuda"):
+        platform = args.target.removesuffix("-cuda")
+        keys += ["quality-card", f"ort-{platform}-cpu"] + ["quality-" + name for name in
                  ("config.json", "BiRefNet_config.py", "birefnet.py", "model.safetensors")]
     inputs = {}
     for key in keys:
         pin = LOCK["sources"][key]
         local = args.hf_cache / pin["hf_path"] if "hf_path" in pin else None
         inputs[key] = fetch(pin, args, local)
-    cuda = cuda_inputs(args) if args.target == "windows-cuda" else {}
+    cuda = cuda_inputs(args) if args.target.endswith("-cuda") else {}
+    cuda_pins = LOCK["cuda_files_linux" if args.target == "linux-cuda" else "cuda_files"]
+    preload = LINUX_PRELOAD if args.target == "linux-cuda" else PRELOAD
     if args.fetch_only:
         print(json.dumps({"status": "sources-ready", "target": args.target, "cache": str(args.cache)}))
         return
@@ -378,7 +451,7 @@ def main():
     try:
         library = package_runtime(inputs["ort-" + args.target], args.target, staging)
         for name, path in cuda.items():
-            copy_private(path, staging / "runtime/cuda" / name, LOCK["cuda_files"][name])
+            copy_private(path, staging / "runtime/cuda" / name, cuda_pins[name])
         package_fonts(inputs, staging)
         package_licenses(inputs, staging, args.target)
         sidecar = prepare_fast(inputs["fast"], inputs["fast-sidecar"], staging / "models/fast.onnx", bool(cuda))
@@ -387,7 +460,7 @@ def main():
         manifest = {"version": 1,
                     "runtime": {"version": "1.26.0", "provider": "cuda" if cuda else "cpu", "library": library,
                                 "files": [record(path, staging) for path in sorted((staging / "runtime").rglob("*")) if path.is_file()],
-                                "preload": ["runtime/cuda/" + name for name in PRELOAD] if cuda else []},
+                                "preload": ["runtime/cuda/" + name for name in preload] if cuda else []},
                     "fast": {**record(staging / "models/fast.onnx", staging), "input_name": sidecar["input_name"],
                              "output_name": sidecar["output_name"], "input_size": sidecar["canvas_size"], "precision": sidecar["precision"]},
                     "quality": {**record(staging / "models/quality.onnx", staging), "input_name": "input", "output_name": "mask",
@@ -395,7 +468,8 @@ def main():
                     "fonts": [record(path, staging) for path in sorted((staging / "fonts").iterdir())],
                     "provenance": {"target": args.target, "source_lock_sha256": sha256(LOCK_PATH),
                                    "preparation_script_sha256": sha256(Path(__file__)), "sources": {key: LOCK["sources"][key] for key in keys},
-                                   "cuda": {"release": "12.8.1", "cudnn": "9.8.0.87", "files": LOCK["cuda_files"]} if cuda else None,
+                                   "cuda": {"release": "12.8.1", "cudnn": "9.8.0.87", "files": cuda_pins,
+                                            "sources": {key: LOCK["sources"][key] for key in sorted({pin["component"] for pin in cuda_pins.values()})}} if cuda else None,
                                    "model_revisions": {"fast": LOCK["fast_revision"], "quality": LOCK["quality_revision"] if cuda else None},
                                    "quality_build": quality_report, "fast_sigmoid_defusions": 1 if cuda else 0,
                                    "attribution": "Built with DINOv3", "source_evidence": LOCK["evidence"],
@@ -415,6 +489,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as error:
+    except (ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile, tarfile.TarError) as error:
         print(f"Artefaktvorbereitung fehlgeschlagen: {error}", file=sys.stderr)
         raise SystemExit(1)
