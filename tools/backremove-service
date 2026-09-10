@@ -1,0 +1,41 @@
+#!/bin/sh
+# Host operator entrypoint; containers never receive Docker or systemd access.
+set -eu
+release="$HOME/.local/share/backremove/current"
+compose() {
+    # Ignore development overrides and always address this host's Docker daemon.
+    env -i HOME="$HOME" PATH=/usr/bin:/bin docker --host unix:///var/run/docker.sock \
+        compose --project-name backremove --project-directory "$release" \
+        --env-file "$release/deploy.env" --file "$release/docker-compose.cuda.yml" "$@"
+}
+stop_recovery() {
+    systemctl --user stop backremove-recover.timer backremove-recover.service
+}
+case "${1:-status}" in
+    start)
+        compose up --detach --wait --wait-timeout 180
+        systemctl --user start backremove-recover.timer
+        ;;
+    stop)
+        stop_recovery
+        compose stop
+        ;;
+    restart)
+        stop_recovery
+        compose stop
+        # Recreate both: the tunnel must join the replacement GPU owner's namespace.
+        compose up --detach --force-recreate --wait --wait-timeout 180
+        systemctl --user start backremove-recover.timer
+        ;;
+    status)
+        compose ps --all
+        ;;
+    logs)
+        shift
+        compose logs --tail 100 "$@"
+        ;;
+    *)
+        printf '%s\n' 'Usage: backremove-service [start|stop|restart|status|logs [--follow]]' >&2
+        exit 2
+        ;;
+esac
