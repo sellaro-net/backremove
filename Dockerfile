@@ -20,7 +20,7 @@ COPY tools/ ./tools/
 RUN --mount=type=cache,target=/src/.artifacts-cache,sharing=locked \
     python -B tools/prepare.py --target linux-cuda --output /artifact-pack
 
-FROM rust:1.95.0-bookworm@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1 AS build
+FROM rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     meson ninja-build nasm pkg-config python3 ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
