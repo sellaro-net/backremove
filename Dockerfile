@@ -68,7 +68,7 @@ RUN python3 -B tools/build_inventory.py --output /out --dav1d-prefix /opt/dav1d 
 
 # Native executable, native libraries, models, fonts and licenses only.
 # No Python executable/modules, PyTorch, exporter, compiler or CUDA toolkit.
-FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime-base
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS runtime-base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
