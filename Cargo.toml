@@ -9,7 +9,7 @@ default-run = "backremove"
 
 [dependencies]
 axum = { version = "=0.8.8", default-features = false, features = ["http1", "http2", "json", "tokio", "query"] }
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal", "io-util"] }
+tokio = { version = "=1.53.2", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal", "io-util"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "=0.7.1", features = ["cors", "trace", "limit"] }
 multer = "=3.1.0"
@@ -43,7 +43,7 @@ gif = "=0.14.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
 
 [dev-dependencies]
-tokio = { version = "=1.53.1", features = ["test-util"] }
+tokio = { version = "=1.53.2", features = ["test-util"] }
 
 [patch.crates-io]
 # Upstream 0.8.3 swaps two operating-point field widths and corrupts the
