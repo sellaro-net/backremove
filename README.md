@@ -467,9 +467,26 @@ The separate user timer checks every 30 seconds and handles sustained unhealthy
 state after Docker's three failed healthchecks. Recovery waits for native
 readiness and reattaches cloudflared after the GPU container restarts or is
 replaced. This matters because shared network namespaces do not automatically
-follow a replacement container. Recovery is capped at three attempts per service
-in ten minutes; persistent failures require inspecting logs, not a restart storm.
-Stopped or paused containers are not started by the watchdog.
+follow a replacement container.
+
+Every run converges from whatever state it finds, so a run that is killed
+halfway (systemd timeout, reboot, Docker hiccup) is completed by the next one:
+
+- cloudflared is a stateless sidecar. While BackRemove runs healthy, the tunnel
+  is kept running and attached to it: a missing, stopped, unhealthy or stale
+  tunnel, and the temporary-name leftover of an aborted `--force-recreate`, are
+  removed and the tunnel is started fresh.
+- A leftover BackRemove container of an aborted recreate is removed next to the
+  running one. Before restarting an unhealthy BackRemove, recovery records the
+  restart in its journal (`~/.local/state/backremove/recovery.json`); if it is
+  interrupted with BackRemove stopped, the next run starts it again.
+- BackRemove stopped or paused by an operator stays stopped or paused, and so
+  does a paused tunnel. Two running BackRemove containers are refused, not guessed.
+
+Unsuccessful attempts are capped at three per service in ten minutes; after the
+window recovery tries again, and a successful recovery resets the count, so
+repeated independent outages are all repaired. The unit's start timeout is above
+the script's own command timeouts, so systemd does not cut a recovery short.
 
 `backremove-service stop` stops both the recovery timer and containers.
 `restart` stops recovery, stops the stack, recreates both containers, waits for
@@ -490,6 +507,10 @@ the `current` symlink with the new release, then run `backremove-service restart
 Keep the previous directory and image. Rollback uses the same stop, symlink switch
 and restart sequence with the previous release; never overwrite a running image
 tag or prune images retained for rollback. Secrets remain outside both releases.
+An update that changes only the host controls (`tools/`, `ops/`) keeps the image
+and Compose file and needs no restart: prepare the new release directory with the
+same `deploy.env`, switch `current`, install the units and run
+`systemctl --user daemon-reload`. The next timer run uses the new release.
 Neither service depends on a Windows volume or the source worktree at runtime.
 
 Validation must include real authenticated JPEG requests for **both** models,
