@@ -46,6 +46,13 @@ jobs:
           tar -xzf "$tool_dir/actionlint.tar.gz" -C "$tool_dir" actionlint
           "$tool_dir/actionlint" -color
 
+      - name: Test host recovery controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Standard library only; the host runs this script with its system Python 3.11+.
+          python3 -m unittest -v tests.test_recover_service
+
       - name: Audit the native locked dependency graph
         shell: bash
         run: |
