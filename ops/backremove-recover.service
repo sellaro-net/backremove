@@ -4,7 +4,9 @@ Description=Recover unhealthy BackRemove CUDA containers without exposing Docker
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 %h/.local/share/backremove/current/tools/recover_service.py %h/.local/share/backremove/current --state %h/.local/state/backremove/recovery.json
-TimeoutStartSec=300
+# Above the sum of the script's own command timeouts on its longest path (18 min), so
+# systemd never cuts a recovery short; a run cut short anyway is completed by the next.
+TimeoutStartSec=1200
 UMask=0077
 NoNewPrivileges=true
 Nice=10
