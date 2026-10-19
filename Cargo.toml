@@ -24,7 +24,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 subtle = "=2.6.1"
 ipnet = "2"
 dotenvy = "0.15"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 libloading = "0.9"
 half = "2"
