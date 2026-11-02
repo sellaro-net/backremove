@@ -31,7 +31,7 @@ half = "2"
 flume = "0.12"
 image = { version = "=0.25.9", default-features = false, features = ["jpeg", "png", "webp", "gif", "avif-native"] }
 fast_image_resize = { version = "=6.1.0", default-features = false, features = ["std"] }
-resvg = { version = "=0.48.1", default-features = false, features = ["text", "raster-images"] }
+resvg = { version = "=0.49.0", default-features = false, features = ["text", "raster-images"] }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-26", "cuda", "half"] }
 roxmltree = "=0.21.1"
 data-url = "=0.3.2"
